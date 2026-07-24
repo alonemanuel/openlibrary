@@ -5,3 +5,5 @@ data/
 .env
 .DS_Store
 coverage/
+*.tsbuildinfo
+web/src/**/*.js
