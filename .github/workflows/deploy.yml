@@ -1,32 +1,43 @@
 name: Deploy
 
-# Every push to main ships the Worker. Pull requests only build, so a branch
-# can never deploy over production by accident.
+# Every push to main ships the Worker. Pull requests only run the checks, so a
+# branch can never deploy over production by accident.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+env:
+  # Pinned deliberately. An older wrangler does not understand
+  # assets.run_worker_first and silently serves static files ahead of the
+  # Worker — which publishes the entire library to anyone who loads the page.
+  WRANGLER_VERSION: '4.125.0'
+  APP_URL: https://music-library.alonemanuel95.workers.dev
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # The music library page is a static shell; the Worker fills it per user.
-      - name: Check the shell has no baked-in library data
+      - name: The shell must carry no library data
         run: |
           shell=music-library/worker/public/index.html
           test -f "$shell"
           grep -q '/\*__DATA__\*/null' "$shell" \
-            || { echo "::error::shell is missing its data placeholder"; exit 1; }
-          ! grep -q '"songs":\[\[' "$shell" \
-            || { echo "::error::shell has a library baked into it"; exit 1; }
+            || { echo "::error::shell lost its data placeholder"; exit 1; }
+          if grep -q '"songs":\[\[' "$shell"; then
+            echo "::error::a library is baked into the shell"; exit 1
+          fi
+
+      - name: The worker must run before static assets
+        run: |
+          grep -q '^run_worker_first = true' music-library/worker/wrangler.toml \
+            || { echo "::error::run_worker_first is not set — assets would bypass auth"; exit 1; }
 
       - name: Deploy Worker
         if: github.event_name == 'push'
@@ -34,3 +45,20 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: music-library/worker
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+
+      # Deploying is not the same as being safe. Prove the live site refuses to
+      # serve a library to someone who is not signed in.
+      - name: Signed-out smoke test
+        if: github.event_name == 'push'
+        run: |
+          sleep 8
+          code=$(curl -s -o /tmp/body.html -w '%{http_code}' "$APP_URL/")
+          echo "GET / -> $code"
+          [ "$code" = "401" ] || { echo "::error::expected 401 for a signed-out visitor, got $code"; exit 1; }
+          if grep -qE '"songs":\[\[|const DATA = \{' /tmp/body.html; then
+            echo "::error::library data served to a signed-out visitor"; exit 1
+          fi
+          api=$(curl -s -o /dev/null -w '%{http_code}' "$APP_URL/api/library")
+          [ "$api" = "401" ] || { echo "::error::/api/library returned $api unauthenticated"; exit 1; }
+          echo "signed-out access is sealed"
