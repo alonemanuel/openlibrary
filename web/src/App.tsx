@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import { LIBRARY_CHANGED, api } from './api';
 import { SessionProvider, useSession } from './session';
+import { ThemeProvider, ThemeToggle } from './theme';
 import { Auth } from './pages/Auth';
 import { Library } from './pages/Library';
 import { Discover } from './pages/Discover';
@@ -73,9 +74,12 @@ function Sidebar() {
       <div className="sidebar-footer">
         <div style={{ fontWeight: 600 }}>{me?.displayName}</div>
         <div className="muted-note">@{me?.handle}</div>
-        <button className="btn ghost small" style={{ marginTop: 8 }} onClick={() => void signOut()}>
-          Sign out
-        </button>
+        <div className="sidebar-actions">
+          <button className="btn ghost small" onClick={() => void signOut()}>
+            Sign out
+          </button>
+          <ThemeToggle className="btn ghost small theme-toggle" />
+        </div>
       </div>
     </aside>
   );
@@ -114,8 +118,10 @@ function Shell() {
 
 export function App() {
   return (
-    <SessionProvider>
-      <Shell />
-    </SessionProvider>
+    <ThemeProvider>
+      <SessionProvider>
+        <Shell />
+      </SessionProvider>
+    </ThemeProvider>
   );
 }

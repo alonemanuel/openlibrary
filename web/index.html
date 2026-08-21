@@ -3,12 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="light dark" />
     <title>Open Library</title>
     <meta
       name="description"
       content="Your music, books and films — in a library you own, synced where you choose."
     />
+    <script>
+      // Settle the theme before the first paint, so a saved choice that differs
+      // from the device setting never flashes the wrong colours. Keep the storage
+      // key in step with src/theme.tsx.
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('openlibrary.theme');
+        } catch (error) {
+          // Site data blocked — fall back to the device setting.
+        }
+        var prefersDark =
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme =
+          saved === 'light' || saved === 'dark' ? saved : prefersDark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

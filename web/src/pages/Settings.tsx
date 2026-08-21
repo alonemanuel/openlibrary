@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useSession } from '../session';
+import { THEME_PREFERENCES, useTheme, type ThemePreference } from '../theme';
 import { formatDateTime, useToast } from '../components/ui';
 import { VISIBILITIES, type ItemEvent, type Visibility } from '../types';
 
@@ -10,8 +11,19 @@ const VISIBILITY_COPY: Record<Visibility, string> = {
   public: 'Anyone signed in can see items marked public',
 };
 
+const THEME_COPY: Record<ThemePreference, { icon: string; label: string; hint: string }> = {
+  system: {
+    icon: '🖥',
+    label: 'System',
+    hint: 'Following your device — it changes when your device does.',
+  },
+  light: { icon: '☀', label: 'Light', hint: 'Always light, whatever your device is set to.' },
+  dark: { icon: '☾', label: 'Dark', hint: 'Always dark, whatever your device is set to.' },
+};
+
 export function Settings() {
   const { me, setMe } = useSession();
+  const { preference, setPreference } = useTheme();
   const [displayName, setDisplayName] = useState(me?.displayName ?? '');
   const [visibility, setVisibility] = useState<Visibility>(me?.libraryVisibility ?? 'friends');
   const [events, setEvents] = useState<ItemEvent[]>([]);
@@ -76,6 +88,27 @@ export function Settings() {
         <button className="btn primary" onClick={save}>
           Save
         </button>
+      </div>
+
+      <div className="panel">
+        <h2>Appearance</h2>
+        <div className="hint">{THEME_COPY[preference].hint}</div>
+        <div className="segmented" role="group" aria-label="Colour theme">
+          {THEME_PREFERENCES.map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={preference === option}
+              onClick={() => setPreference(option)}
+            >
+              <span aria-hidden="true">{THEME_COPY[option].icon}</span>
+              {THEME_COPY[option].label}
+            </button>
+          ))}
+        </div>
+        <div className="muted-note" style={{ marginTop: 10 }}>
+          Kept in this browser rather than on your account, so each device can differ.
+        </div>
       </div>
 
       <div className="panel">

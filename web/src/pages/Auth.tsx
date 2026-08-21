@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { useSession } from '../session';
+import { ThemeToggle } from '../theme';
 
 export function Auth() {
   const { setMe } = useSession();
@@ -31,6 +32,7 @@ export function Auth() {
 
   return (
     <div className="auth-shell">
+      <ThemeToggle className="btn ghost small theme-toggle theme-corner" />
       <div className="auth-card">
         <div className="brand" style={{ marginBottom: 14, padding: 0 }}>
           <span className="brand-mark">◎</span>
