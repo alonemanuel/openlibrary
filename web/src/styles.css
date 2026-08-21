@@ -1,4 +1,75 @@
+/*
+ * Two palettes over one set of tokens. Light is the default; dark takes over
+ * when the device asks for it, and `data-theme` on <html> — set by the pre-paint
+ * script in index.html and then by ThemeProvider — overrides both. The dark
+ * block is written twice on purpose: the media query cannot be folded into the
+ * attribute selector, and spelling it out keeps the fallback working before any
+ * script runs.
+ */
+
 :root {
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+
+  /* light */
+  --bg: #f6f7f9;
+  --bg-raised: #ffffff;
+  --bg-hover: #eceff4;
+  --border: #e2e5ea;
+  --border-strong: #c3cad5;
+  --text: #11151b;
+  --text-dim: #55606f;
+  --text-faint: #7c8797;
+  --accent: #0b7a4b;
+  --accent-ink: #ffffff;
+  --accent-alt: #0284c7;
+  --accent-soft: rgb(11 122 75 / 9%);
+  --accent-line: rgb(11 122 75 / 28%);
+  --danger: #b42318;
+  --danger-soft: rgb(180 35 24 / 8%);
+  --danger-line: rgb(180 35 24 / 28%);
+  --warn: #b45309;
+  --warn-soft: rgb(180 83 9 / 9%);
+  --warn-line: rgb(180 83 9 / 28%);
+  --cover-from: #eaeef4;
+  --cover-to: #dce2eb;
+  --scrim: rgb(17 21 27 / 42%);
+  --shadow: 0 10px 30px rgb(15 23 42 / 14%);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1014;
+    --bg-raised: #161a21;
+    --bg-hover: #1d222b;
+    --border: #262c36;
+    --border-strong: #38414f;
+    --text: #e8ecf2;
+    --text-dim: #98a2b3;
+    --text-faint: #6b7686;
+    --accent: #6ee7a8;
+    --accent-ink: #05170e;
+    --accent-alt: #4fc3f7;
+    --accent-soft: rgb(110 231 168 / 10%);
+    --accent-line: rgb(110 231 168 / 35%);
+    --danger: #f87171;
+    --danger-soft: rgb(248 113 113 / 11%);
+    --danger-line: rgb(248 113 113 / 32%);
+    --warn: #fbbf24;
+    --warn-soft: rgb(251 191 36 / 10%);
+    --warn-line: rgb(251 191 36 / 30%);
+    --cover-from: #1c222c;
+    --cover-to: #12161c;
+    --scrim: rgb(5 7 10 / 72%);
+    --shadow: 0 10px 30px rgb(0 0 0 / 45%);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
   --bg: #0e1014;
   --bg-raised: #161a21;
   --bg-hover: #1d222b;
@@ -9,13 +80,19 @@
   --text-faint: #6b7686;
   --accent: #6ee7a8;
   --accent-ink: #05170e;
+  --accent-alt: #4fc3f7;
+  --accent-soft: rgb(110 231 168 / 10%);
+  --accent-line: rgb(110 231 168 / 35%);
   --danger: #f87171;
+  --danger-soft: rgb(248 113 113 / 11%);
+  --danger-line: rgb(248 113 113 / 32%);
   --warn: #fbbf24;
-  --radius: 12px;
-  --radius-sm: 8px;
+  --warn-soft: rgb(251 191 36 / 10%);
+  --warn-line: rgb(251 191 36 / 30%);
+  --cover-from: #1c222c;
+  --cover-to: #12161c;
+  --scrim: rgb(5 7 10 / 72%);
   --shadow: 0 10px 30px rgb(0 0 0 / 45%);
-  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
   color-scheme: dark;
 }
 
@@ -109,7 +186,7 @@ textarea {
   border-radius: 9px;
   display: grid;
   place-items: center;
-  background: linear-gradient(140deg, var(--accent), #4fc3f7);
+  background: linear-gradient(140deg, var(--accent), var(--accent-alt));
   color: var(--accent-ink);
   font-size: 1rem;
 }
@@ -162,6 +239,18 @@ textarea {
   padding-top: 14px;
   font-size: 0.85rem;
   color: var(--text-dim);
+}
+
+/* Sign out on the left, the theme switch tucked against the right edge. */
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sidebar-actions .theme-toggle {
+  margin-left: auto;
 }
 
 .main {
@@ -243,7 +332,7 @@ textarea {
 }
 
 .btn.danger:hover:not(:disabled) {
-  background: rgb(248 113 113 / 12%);
+  background: var(--danger-soft);
   border-color: transparent;
 }
 
@@ -378,7 +467,7 @@ label {
 
 .cover {
   aspect-ratio: 3 / 4;
-  background: linear-gradient(160deg, #1c222c, #12161c);
+  background: linear-gradient(160deg, var(--cover-from), var(--cover-to));
   display: grid;
   place-items: center;
   font-size: 2rem;
@@ -441,20 +530,20 @@ label {
 
 .badge.accent {
   color: var(--accent);
-  border-color: rgb(110 231 168 / 35%);
-  background: rgb(110 231 168 / 10%);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 
 .badge.warn {
   color: var(--warn);
-  border-color: rgb(251 191 36 / 30%);
-  background: rgb(251 191 36 / 10%);
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
 }
 
 .badge.danger {
   color: var(--danger);
-  border-color: rgb(248 113 113 / 30%);
-  background: rgb(248 113 113 / 10%);
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
 }
 
 .rating {
@@ -536,7 +625,7 @@ label {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgb(5 7 10 / 72%);
+  background: var(--scrim);
   display: grid;
   place-items: center;
   padding: 20px;
@@ -601,20 +690,20 @@ label {
 
 .alert.error {
   color: var(--danger);
-  border-color: rgb(248 113 113 / 35%);
-  background: rgb(248 113 113 / 10%);
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
 }
 
 .alert.ok {
   color: var(--accent);
-  border-color: rgb(110 231 168 / 35%);
-  background: rgb(110 231 168 / 10%);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 
 .alert.warn {
   color: var(--warn);
-  border-color: rgb(251 191 36 / 32%);
-  background: rgb(251 191 36 / 10%);
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
 }
 
 .tabs {
@@ -640,6 +729,56 @@ label {
   border-bottom-color: var(--accent);
 }
 
+.segmented {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+
+.segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  color: var(--text);
+  font-weight: 550;
+}
+
+/* Beats .btn.small on the glyph, which needs the extra size to read clearly. */
+.btn.theme-toggle {
+  font-size: 1rem;
+  line-height: 1;
+  padding: 6px 9px;
+}
+
+/* Signed out there is no sidebar, so the switch sits in the page corner. */
+.theme-corner {
+  position: fixed;
+  top: 16px;
+  right: 18px;
+  z-index: 10;
+}
+
 .toast {
   position: fixed;
   bottom: 22px;
@@ -655,7 +794,7 @@ label {
 }
 
 .toast.error {
-  border-color: rgb(248 113 113 / 45%);
+  border-color: var(--danger-line);
   color: var(--danger);
 }
 
