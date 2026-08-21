@@ -17,6 +17,10 @@ env:
   WRANGLER_VERSION: '4.125.0'
   APP_URL: https://music-library.alonemanuel95.workers.dev
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -40,6 +44,44 @@ jobs:
         run: |
           grep -q '^run_worker_first = true' music-library/worker/wrangler.toml \
             || { echo "::error::run_worker_first is not set — assets would bypass auth"; exit 1; }
+
+      # A pull request uploads a version and gets its own URL, but takes no
+      # production traffic until the branch merges.
+      - name: Upload preview version
+        id: preview
+        if: github.event_name == 'pull_request'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: music-library/worker
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+          command: versions upload
+
+      - name: Comment the preview URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const out = `${{ steps.preview.outputs.command-output }}`;
+            const url = (out.match(/https:\/\/[a-z0-9-]+\.workers\.dev/) || [])[0];
+            if (!url) return;
+            const body = [
+              `**Preview:** ${url}`,
+              '',
+              'Sign-in gated, same as production. Note it reads the **live D1 and R2**,',
+              'so data changes here are not isolated from prod.',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number,
+            });
+            const mine = comments.find((c) => c.body.startsWith('**Preview:**'));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
 
       - name: Deploy Worker
         if: github.event_name == 'push'
