@@ -7,3 +7,13 @@ data/
 coverage/
 *.tsbuildinfo
 web/src/**/*.js
+
+# music-library: generated output and personal listening data
+music-library/art_cache.json
+music-library/resolved.json
+music-library/likes.json
+music-library/browser.json
+music-library/*.log
+music-library/library.html
+music-library/liked_music_deduped.csv
+music-library/mb_probe.json
