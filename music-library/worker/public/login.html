@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Library</title>
+<style>
+  :root{--bg:#0b0b0f;--fg:#f2f2f5;--dim:#9a9aa8;--line:#26262f;--accent:#f5426c}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--fg);display:grid;place-items:center;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+  .card{width:min(360px,90vw);text-align:center}
+  h1{font-size:20px;font-weight:650;letter-spacing:-.02em;margin:0 0 6px}
+  p{color:var(--dim);font-size:13.5px;margin:0 0 26px}
+  #gsi{display:flex;justify-content:center;min-height:44px}
+  .err{margin-top:18px;font-size:13px;color:#ffb4b4;min-height:20px}
+  .note{margin-top:30px;font-size:11.5px;color:#6a6a78}
+</style>
+<div class="card">
+  <h1>Music Library</h1>
+  <p>Sign in to see your library.</p>
+  <div id="gsi"></div>
+  <div class="err" id="err"></div>
+  <div class="note">Only accounts with a library here can sign in.</div>
+</div>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+async function boot(){
+  const {clientId} = await (await fetch('/api/config')).json();
+  if(!clientId){ document.getElementById('err').textContent =
+    'Google sign-in is not configured yet.'; return; }
+  const start = () => {
+    google.accounts.id.initialize({client_id: clientId, callback: onCredential});
+    google.accounts.id.renderButton(document.getElementById('gsi'),
+      {theme:'filled_black', size:'large', shape:'pill', text:'signin_with'});
+  };
+  (window.google && google.accounts) ? start()
+    : window.addEventListener('load', () => setTimeout(start, 200));
+}
+async function onCredential(resp){
+  const err = document.getElementById('err');
+  err.textContent = '';
+  const r = await fetch('/api/session', {
+    method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({credential: resp.credential}),
+  });
+  if(r.ok){ location.reload(); return; }
+  const d = await r.json().catch(() => ({}));
+  err.textContent = d.error || 'Sign-in failed.';
+}
+boot();
+</script>

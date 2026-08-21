@@ -1,0 +1,36 @@
+name: Deploy
+
+# Every push to main ships the Worker. Pull requests only build, so a branch
+# can never deploy over production by accident.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The music library page is a static shell; the Worker fills it per user.
+      - name: Check the shell has no baked-in library data
+        run: |
+          shell=music-library/worker/public/index.html
+          test -f "$shell"
+          grep -q '/\*__DATA__\*/null' "$shell" \
+            || { echo "::error::shell is missing its data placeholder"; exit 1; }
+          ! grep -q '"songs":\[\[' "$shell" \
+            || { echo "::error::shell has a library baked into it"; exit 1; }
+
+      - name: Deploy Worker
+        if: github.event_name == 'push'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: music-library/worker

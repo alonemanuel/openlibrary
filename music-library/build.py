@@ -21,7 +21,9 @@ CSV = os.environ.get(
 CACHE = os.path.join(HERE, "art_cache.json")
 NAMES = os.path.join(HERE, "names.json")     # curated Hebrew/Arabic -> English
 TEMPLATE = os.path.join(HERE, "template.html")
-OUT = os.path.join(HERE, "library.html")
+# Alongside the export, one level up from the scripts.
+OUT = os.environ.get("MUSIC_OUT") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "library.html")
 
 DZ_RE = re.compile(r"https://(?:e-)?cdn-images\.dzcdn\.net/images/([a-z]+)/([0-9a-f]+)/")
 KINDS = ["cover", "artist", "misc", "playlist", "user", "talk"]
@@ -29,9 +31,23 @@ KINDS = ["cover", "artist", "misc", "playlist", "user", "talk"]
 RTYPE = {"album": 0, "single": 1, "ep": 2, "compile": 3, "compilation": 3}
 
 
+# Serve mirrored art from our own bucket when MUSIC_CDN is set, so the page
+# stops depending on Deezer's CDN staying reachable and un-hotlink-blocked.
+# Anything that failed to mirror keeps its original URL rather than 404ing.
+CDN = (os.environ.get("MUSIC_CDN") or "").rstrip("/")
+_MANIFEST = os.environ.get("MUSIC_ART_MANIFEST") or os.path.expanduser(
+    "~/.musiclib/art/manifest.json")
+MIRROR = (json.load(open(_MANIFEST, encoding="utf-8"))
+          if (CDN and os.path.exists(_MANIFEST)) else {})
+
+
 def pack_url(url):
     if not url:
         return ""
+    if CDN:
+        key = MIRROR.get(url)
+        if key:
+            return CDN + "/" + key
     m = DZ_RE.match(url)
     if not m:
         return url                       # iTunes URLs stay verbatim
@@ -372,8 +388,13 @@ def main():
             "src": "liked_music_deduped.csv"}
 
     html = open(TEMPLATE, encoding="utf-8").read()
-    html = html.replace("/*__DATA__*/null",
-                        json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    if os.environ.get("MUSIC_SHELL"):
+        # Leave the placeholder intact: the Worker substitutes one user's
+        # library at request time, so the file on disk holds nobody's data.
+        pass
+    else:
+        html = html.replace("/*__DATA__*/null",
+                            json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html)
 

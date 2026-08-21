@@ -1,0 +1,1435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Library</title>
+<style>
+  :root{
+    --bg:#0b0b0f; --bg2:#121218; --panel:#16161d; --line:#26262f;
+    --fg:#f2f2f5; --dim:#9a9aa8; --dimmer:#6a6a78;
+    --accent:#f5426c; --accent2:#7c5cff;
+    --radius:10px;
+    --head:132px;
+    --player-h:0px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  input{font:inherit}
+
+  /* ---------- header ---------- */
+  header{
+    position:fixed;top:0;left:0;right:0;z-index:40;
+    background:linear-gradient(180deg,rgba(11,11,15,.97) 60%,rgba(11,11,15,.86));
+    backdrop-filter:blur(16px); border-bottom:1px solid var(--line);
+  }
+  .top{display:flex;align-items:center;gap:16px;padding:14px 22px 0}
+  .brand{display:flex;align-items:baseline;gap:10px;flex:none}
+  .brand h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}
+  .brand .sub{font-size:11.5px;color:var(--dimmer);font-variant-numeric:tabular-nums}
+
+  .search{position:relative;flex:1;max-width:420px;margin-left:auto}
+  .search input{
+    width:100%;padding:8px 30px 8px 32px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--line);color:var(--fg);outline:none;
+  }
+  .search input:focus{border-color:#3a3a48;background:#1a1a22}
+  .search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.45;pointer-events:none}
+  .search .clr{position:absolute;right:7px;top:50%;transform:translateY(-50%);
+    width:22px;height:22px;border-radius:50%;color:var(--dim);display:none;
+    align-items:center;justify-content:center;line-height:0}
+  .search .clr:hover{background:#2a2a35;color:var(--fg)}
+  .search.has .clr{display:flex}
+
+  /* ---------- tabs ---------- */
+  nav{display:flex;gap:2px;padding:10px 22px 0}
+  .tab{
+    position:relative;padding:8px 16px 12px;color:var(--dim);
+    font-weight:560;font-size:14.5px;letter-spacing:-.01em;border-radius:8px 8px 0 0;
+  }
+  .tab:hover{color:var(--fg)}
+  .tab.on{color:var(--fg)}
+  .tab.on::after{
+    content:"";position:absolute;left:14px;right:14px;bottom:5px;height:2.5px;
+    border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));
+  }
+  .tab .n{font-size:11px;color:var(--dimmer);margin-left:6px;font-variant-numeric:tabular-nums}
+  .tab.on .n{color:var(--dim)}
+
+  /* ---------- controls ---------- */
+  .bar{
+    display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;
+    padding:0 22px 10px;font-size:12.5px;color:var(--dim);
+  }
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{padding:5px 11px;color:var(--dim);font-size:12.5px;white-space:nowrap}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:#282833;color:var(--fg)}
+  .seg button:hover:not(.on){background:#1e1e27;color:var(--fg)}
+  .bar .lbl{color:var(--dimmer);font-size:11.5px;text-transform:uppercase;letter-spacing:.07em}
+  .bar .spacer{flex:1}
+  .count{font-variant-numeric:tabular-nums;color:var(--dimmer);font-size:12px}
+
+  /* ---------- scroll area ---------- */
+  main{position:fixed;top:var(--head);left:0;right:0;bottom:var(--player-h,0px);
+    overflow-y:auto;overflow-x:hidden}
+  main::-webkit-scrollbar{width:11px}
+  main::-webkit-scrollbar-thumb{background:#2e2e3a;border-radius:6px;border:3px solid var(--bg)}
+  main::-webkit-scrollbar-thumb:hover{background:#3d3d4c}
+
+  /* ---------- songs (virtualised) ---------- */
+  #songport{position:relative;padding:6px 22px 60px}
+  #songport .rows{position:absolute;left:22px;right:22px;top:6px}
+  .row{
+    display:flex;align-items:center;gap:12px;height:46px;padding:0 10px;
+    border-radius:8px;cursor:pointer;position:absolute;left:0;right:0;
+  }
+  .row:hover{background:#191921}
+  .row .idx{width:38px;flex:none;text-align:right;color:var(--dimmer);
+    font-size:12px;font-variant-numeric:tabular-nums}
+  .row:hover .idx{color:var(--fg)}
+  .row .art{width:34px;height:34px;flex:none;border-radius:5px;object-fit:cover;background:#22222c}
+  .row .meta{min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center}
+  .row .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:480}
+  .row .a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-size:12px;color:var(--dim);margin-top:1px}
+  .row .a b{font-weight:inherit}
+  .sep{color:var(--dimmer)}
+  .row .a:hover b{color:var(--fg);text-decoration:underline}
+  .row .alb{width:26%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-size:12.5px;color:var(--dim)}
+  .row .alb:hover{color:var(--fg);text-decoration:underline}
+  .row .d{width:48px;flex:none;text-align:right;font-size:12px;color:var(--dimmer);
+    font-variant-numeric:tabular-nums}
+  .row .yt{width:22px;flex:none;opacity:0;color:var(--dim);line-height:0;
+    display:flex;align-items:center;justify-content:center}
+  .row .yt svg{display:block}
+  .row:hover .yt{opacity:.85}
+  .row.playing .yt{opacity:1;color:var(--accent)}
+  body:not(.can-search) .row.unliked .yt{display:none}
+  @media(max-width:820px){ .row .alb{display:none} }
+  @media(max-width:700px){
+    .top{flex-wrap:wrap;gap:8px}
+    .search{max-width:none;margin-left:0;order:3;flex-basis:100%}
+    .bar .spacer{display:none}
+    .bar .count{width:100%}
+    nav{padding-top:4px}
+  }
+
+  /* ---------- grids ---------- */
+  .grid{
+    display:grid;gap:20px 16px;padding:14px 22px 70px;
+    grid-template-columns:repeat(auto-fill,minmax(155px,1fr));
+  }
+  .card{cursor:pointer;min-width:0}
+  .thumb{
+    position:relative;width:100%;aspect-ratio:1;border-radius:7px;overflow:hidden;
+    background:#1c1c25;box-shadow:0 3px 14px rgba(0,0,0,.4);
+  }
+  .card.artist .thumb{border-radius:50%}
+  /* Painted over the letter tile beneath it. No fade: a transition created
+     before the chunk-inserted node first renders can stick at opacity 0. */
+  .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+  .fallback{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:30px;font-weight:600;color:rgba(255,255,255,.82);letter-spacing:-.02em;
+    text-shadow:0 2px 8px rgba(0,0,0,.35);
+  }
+  .card:hover .thumb{box-shadow:0 6px 22px rgba(0,0,0,.55)}
+  .card .nm{margin-top:9px;font-weight:520;font-size:13.5px;line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .card.artist .nm{text-align:center}
+  .card .sub{font-size:11.5px;color:var(--dimmer);margin-top:2px}
+  .card .alt{font-size:11px;color:var(--dim);margin-top:1px;opacity:.75;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card.artist .alt{text-align:center}
+  .tag{position:absolute;left:7px;bottom:7px;z-index:2;
+    padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600;
+    letter-spacing:.04em;text-transform:uppercase;
+    background:rgba(8,8,12,.78);color:#e6e6ee;backdrop-filter:blur(4px)}
+  .card.artist .sub{text-align:center}
+
+  /* ---------- detail overlay ---------- */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.62);backdrop-filter:blur(3px);
+    z-index:50;display:none}
+  .scrim.on{display:block}
+  .sheet{
+    position:fixed;z-index:51;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:min(860px,92vw);max-height:86vh;background:var(--bg2);
+    border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    display:none;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.7);
+  }
+  .sheet.on{display:flex}
+  .sheet .hd{display:flex;gap:20px;padding:22px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#1c1c26,#16161d)}
+  .sheet .hd .thumb{width:132px;height:132px;flex:none}
+  .sheet .hd .info{min-width:0;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:4px}
+  .sheet .hd .kind{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--dimmer)}
+  .sheet .hd h2{margin:6px 0 0;font-size:26px;line-height:1.15;letter-spacing:-.025em;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .sheet .hd .by{margin-top:7px;color:var(--dim);font-size:13.5px}
+  .sheet .hd .by b{color:var(--fg);font-weight:520;cursor:pointer}
+  .sheet .hd .by b:hover{text-decoration:underline}
+  .sheet .bd{overflow-y:auto;padding:8px 14px 18px}
+  .sheet .bd::-webkit-scrollbar{width:9px}
+  .sheet .bd::-webkit-scrollbar-thumb{background:#2e2e3a;border-radius:6px;border:2px solid var(--bg2)}
+  .sheet .grp{padding:14px 8px 5px;font-size:11px;text-transform:uppercase;
+    letter-spacing:.09em;color:var(--dimmer)}
+  .sheet .row{position:relative;height:44px}
+  .sheet .row.unliked{opacity:.42}
+  .sheet .row.unliked:hover{opacity:.72;background:#191921}
+  body:not(.can-search) .sheet .row.unliked{cursor:default}
+  body:not(.can-search) .sheet .row.unliked:hover{opacity:.42;background:transparent}
+  .sheet .row.resolving{opacity:.6}
+  .sheet .row.resolving .yt{opacity:1;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .sheet .row.unliked .t{font-weight:400}
+  .x{position:absolute;top:12px;right:14px;z-index:2;width:30px;height:30px;border-radius:50%;
+    background:rgba(0,0,0,.4);color:var(--dim);display:flex;align-items:center;
+    justify-content:center;line-height:0}
+  .x svg{display:block}
+  .x:hover{background:rgba(0,0,0,.7);color:var(--fg)}
+  .minigrid{display:grid;gap:14px 12px;padding:4px 8px 10px;
+    grid-template-columns:repeat(auto-fill,minmax(108px,1fr))}
+
+  /* ---------- playback bar ---------- */
+  #player{
+    position:fixed;left:0;right:0;bottom:0;z-index:60;height:74px;
+    display:none;align-items:center;gap:14px;padding:0 16px;
+    background:rgba(16,16,22,.97);backdrop-filter:blur(18px);
+    border-top:1px solid var(--line);
+  }
+  #player.on{display:flex}
+  #player .pcover{width:48px;height:48px;flex:none;border-radius:6px;object-fit:cover;background:#22222c}
+  #player .pmeta{min-width:0;width:22%;display:flex;flex-direction:column}
+  #player .pt{font-size:13px;font-weight:520;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #player .pa{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #player .pa:hover{color:var(--fg);text-decoration:underline;cursor:pointer}
+  .pctl{display:flex;align-items:center;gap:6px;flex:none}
+  .pbtn{width:32px;height:32px;border-radius:50%;color:var(--dim);
+    display:flex;align-items:center;justify-content:center;line-height:0;
+    transition:color .12s, background .12s, transform .12s}
+  .pbtn svg{display:block}
+  .pbtn:hover{background:#26262f;color:var(--fg)}
+  .pbtn:active{transform:scale(.93)}
+  .pbtn.main{width:38px;height:38px;background:var(--fg);color:#0b0b0f}
+  .pbtn.main:hover{background:#fff;transform:scale(1.06)}
+  .pbtn.main:active{transform:scale(.97)}
+  /* the play triangle reads off-centre unless nudged */
+  #pplay svg{transform:translateX(1px)}
+  #pplay svg rect{transform:translateX(-1px)}
+  .pbtn.act{color:var(--accent)}
+  .pbtn.on{color:var(--accent)}
+  .pbtn.busy{opacity:.45;pointer-events:none}
+  body:not(.can-rate) .plike{opacity:.4}
+  .row .lk{width:24px;flex:none;opacity:0;color:var(--dim);line-height:0;
+    display:flex;align-items:center;justify-content:center;border-radius:50%}
+  .row .lk svg{display:block;width:15px;height:15px}
+  .row:hover .lk{opacity:.7}
+  .row .lk:hover{opacity:1;color:var(--fg)}
+  .row .lk.on{opacity:1;color:var(--accent)}
+  body:not(.can-rate) .row .lk{display:none}
+  .volicon{display:flex;align-items:center;color:var(--dimmer);line-height:0;margin-right:-2px}
+  .volicon svg{display:block}
+  .pseek{flex:1;display:flex;align-items:center;gap:9px;min-width:120px}
+  .pseek .tm{font-size:11px;color:var(--dimmer);font-variant-numeric:tabular-nums;width:38px;flex:none}
+  .pseek .tm.r{text-align:right}
+  .prange{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:3px;
+    background:#33333f;outline:none;cursor:pointer}
+  .prange::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+    background:var(--fg);box-shadow:0 0 0 3px rgba(0,0,0,.35)}
+  .prange::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--fg)}
+  .pright{display:flex;align-items:center;gap:4px;flex:none}
+  .pvol{width:78px}
+  .pnote{position:absolute;left:0;right:0;top:-26px;text-align:center;font-size:11.5px;
+    color:#ffd7a1;background:rgba(58,40,12,.94);padding:4px;display:none}
+  .pnote.on{display:block}
+
+  /* Video panel. Collapsed to 1px rather than display:none — hiding an iframe
+     outright stops playback in some browsers. */
+  #pip{
+    position:fixed;right:16px;bottom:86px;z-index:61;width:328px;aspect-ratio:16/9;
+    background:#000;border-radius:10px;overflow:hidden;
+    box-shadow:0 18px 50px rgba(0,0,0,.66);border:1px solid #2a2a34;
+    transition:width .18s, opacity .18s;
+  }
+  #pip.off{width:1px;height:1px;aspect-ratio:auto;opacity:0;pointer-events:none;
+    box-shadow:none;border:0;bottom:0;right:0}
+  #pip iframe{width:100%;height:100%;display:block;border:0}
+  @media(max-width:700px){
+    #pip{width:210px;right:8px;bottom:80px}
+    #player .pmeta{width:auto;flex:1}
+    #player .pseek{display:none}
+  }
+  .row.playing .t, .row.playing .idx{color:var(--accent)}
+
+  .empty{padding:70px 22px;text-align:center;color:var(--dimmer)}
+  .empty b{display:block;color:var(--dim);font-size:15px;margin-bottom:5px}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top">
+    <div class="brand">
+      <h1>Music Library</h1>
+      <span class="sub" id="brandsub"></span>
+    </div>
+    <div class="search" id="searchwrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search songs, artists, albums…" autocomplete="off" spellcheck="false">
+      <button class="clr" id="clr" title="Clear">×</button>
+    </div>
+  </div>
+
+  <nav>
+    <button class="tab on" data-v="songs">Songs <span class="n" id="n-songs"></span></button>
+    <button class="tab" data-v="albums">Albums <span class="n" id="n-albums"></span></button>
+    <button class="tab" data-v="artists">Artists <span class="n" id="n-artists"></span></button>
+  </nav>
+
+  <div class="bar">
+    <span class="lbl">Sort</span>
+    <div class="seg" id="sort"></div>
+    <span class="lbl" style="margin-left:10px">Account</span>
+    <div class="seg" id="acct">
+      <button data-a="all" class="on">All</button>
+      <button data-a="0">Personal</button>
+      <button data-a="1">Work</button>
+    </div>
+    <span class="lbl" id="rellbl" style="margin-left:10px">Show</span>
+    <div class="seg" id="rel">
+      <button data-r="albums" class="on">Albums</button>
+      <button data-r="eps">Singles &amp; EPs</button>
+      <button data-r="all">All</button>
+    </div>
+    <div class="seg" id="ytm" style="margin-left:10px">
+      <button data-y="all" class="on">Everything</button>
+      <button data-y="1">Music only</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="count" id="count"></span>
+  </div>
+</header>
+
+<main id="main">
+  <div id="songport" hidden><div class="rows" id="songrows"></div></div>
+  <div class="grid" id="albumgrid" hidden></div>
+  <div class="grid" id="artistgrid" hidden></div>
+  <div class="empty" id="empty" hidden><b>Nothing matches that</b>Try a different search or clear the filters.</div>
+</main>
+
+<div id="pip" class="off"><div id="ytframe"></div></div>
+
+<div id="player">
+  <div class="pnote" id="pnote"></div>
+  <img class="pcover" id="pcover" alt="">
+  <div class="pmeta">
+    <span class="pt" id="ptitle" dir="auto"></span>
+    <span class="pa" id="partist" dir="auto"></span>
+  </div>
+  <div class="pctl">
+    <button class="pbtn" id="pprev" title="Previous">&#9198;</button>
+    <button class="pbtn main" id="pplay" title="Play / pause (space)">&#9654;</button>
+    <button class="pbtn" id="pnext" title="Next">&#9197;</button>
+  </div>
+  <div class="pseek">
+    <span class="tm" id="pcur">0:00</span>
+    <input class="prange" id="pseek" type="range" min="0" max="1000" value="0">
+    <span class="tm r" id="pdur">0:00</span>
+  </div>
+  <div class="pright">
+    <button class="pbtn plike" id="plike" title="Like on YouTube Music"></button>
+    <button class="pbtn" id="pshuffle" title="Shuffle queue"></button>
+    <button class="pbtn" id="pvid" title="Show / hide video">&#127902;</button>
+    <span class="volicon" id="pvolicon" aria-hidden="true"></span>
+    <input class="prange pvol" id="pvol" type="range" min="0" max="100" value="100" title="Volume">
+    <button class="pbtn" id="pyt" title="Open on YouTube">&#8599;</button>
+    <button class="pbtn" id="pclose" title="Close player">&#10005;</button>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet">
+  <button class="x" id="sheetx">×</button>
+  <div class="hd" id="sheethd"></div>
+  <div class="bd" id="sheetbd"></div>
+</div>
+
+<script>
+// Inlined by build.py for the local/offline copy; left null when the page is
+// served by the Worker, which fetches one user's library from D1 instead.
+let DATA = /*__DATA__*/null;
+const SONGS = DATA.songs, ARTISTS = DATA.artists, ALBUMS = DATA.albums, KINDS = DATA.kinds;
+const ORIGINAL_SONGS = SONGS.length;   // rows appended later were never in the export
+// song tuple: [0]title [1]leadArtistIdx [2]albumIdx [3]seconds [4]videoId
+//              [5]account [6]inYtMusic [7]allArtistIdxs
+//   [7] is every act named in the credit — 'Vibe Ish, Roisha' is two artists,
+//   each independently clickable. [1] is just [7][0], kept for album filing.
+// artist    : [0]displayName [1]pic [2]picSm [3]nTracks [4]nAlbums [5]latinName [6]slug
+// album     : [0]name [1]artistIdx [2]cover [3]coverSm [4]nTracks [5]releaseType [7]slug
+//              [6]tracklist | null — [[title, seconds, likedSongIdx | -1], …]
+//   releaseType: 0 album · 1 single · 2 EP · 3 compilation · 4 unknown
+
+/* ---------- helpers ---------- */
+/* One icon language: transport glyphs are solid, everything else is a 1.7px
+   stroke on the same 24px grid, all inheriting currentColor. */
+const svg = (body, o) => '<svg viewBox="0 0 24 24" width="' + ((o&&o.size)||17)
+  + '" height="' + ((o&&o.size)||17) + '" fill="' + ((o&&o.fill)||"none")
+  + '" stroke="' + ((o&&o.fill) ? "none" : "currentColor")
+  + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"'
+  + ' aria-hidden="true">' + body + '</svg>';
+
+const ICON = {
+  play:  svg('<path d="M8.5 5.4 19 12 8.5 18.6Z"/>', {fill:"currentColor", size:16}),
+  pause: svg('<rect x="8" y="5.5" width="3.2" height="13" rx="1.2"/>'
+           + '<rect x="13.6" y="5.5" width="3.2" height="13" rx="1.2"/>', {fill:"currentColor", size:16}),
+  prev:  svg('<rect x="5.6" y="6" width="2.1" height="12" rx="1"/>'
+           + '<path d="M18.4 6.7v10.6L9.6 12Z"/>', {fill:"currentColor", size:16}),
+  next:  svg('<rect x="16.3" y="6" width="2.1" height="12" rx="1"/>'
+           + '<path d="M5.6 6.7v10.6L14.4 12Z"/>', {fill:"currentColor", size:16}),
+  shuffle: svg('<path d="M4 7h3.2c1.2 0 2.3.6 3 1.6l3.6 5.3c.7 1 1.8 1.6 3 1.6H21"/>'
+             + '<path d="M4 16.9h3.2c1.2 0 2.3-.6 3-1.6l3.6-5.3c.7-1 1.8-1.6 3-1.6H21"/>'
+             + '<path d="m18.4 5.3 2.6 2.6-2.6 2.6"/><path d="m18.4 13.4 2.6 2.6-2.6 2.6"/>'),
+  video: svg('<rect x="2.8" y="5.2" width="18.4" height="13.6" rx="2.6"/>'
+           + '<path d="M10.4 9.6 15 12l-4.6 2.4Z" fill="currentColor" stroke="none"/>'),
+  vol:   svg('<path d="M4.6 9.4h3L11.4 6v12L7.6 14.6h-3Z"/>'
+           + '<path d="M15.2 9.6a3.6 3.6 0 0 1 0 4.8"/>'
+           + '<path d="M17.8 7.4a7.2 7.2 0 0 1 0 9.2"/>', {size:16}),
+  ext:   svg('<path d="M13.6 4.6H19.4v5.8"/><path d="M19.4 4.6 11.8 12.2"/>'
+           + '<path d="M18 13.8V18a1.8 1.8 0 0 1-1.8 1.8H6A1.8 1.8 0 0 1 4.2 18V7.8A1.8 1.8 0 0 1 6 6h4.2"/>', {size:15}),
+  close: svg('<path d="m6.6 6.6 10.8 10.8"/><path d="M17.4 6.6 6.6 17.4"/>', {size:15}),
+  rowPlay: svg('<path d="M8.5 5.4 19 12 8.5 18.6Z"/>', {fill:"currentColor", size:12}),
+  // Thumbs-up, matching YouTube Music — a "like" here is literally rate_song(LIKE).
+  like: svg('<path d="M7.4 10.6v8.6H4.8A1.8 1.8 0 0 1 3 17.4v-5a1.8 1.8 0 0 1 1.8-1.8Z"/>'
+          + '<path d="m7.4 10.6 4.3-6.8a2 2 0 0 1 3.5 1.9l-1.2 4.6h4.4a2.2 2.2 0 0 1 2.1 2.8l-1.4 5.2'
+          + 'a2.2 2.2 0 0 1-2.1 1.6H7.4"/>', {size:16}),
+  likeOn: svg('<path d="M7.4 10.6v8.6H4.8A1.8 1.8 0 0 1 3 17.4v-5a1.8 1.8 0 0 1 1.8-1.8Z"/>'
+            + '<path d="m7.4 10.6 4.3-6.8a2 2 0 0 1 3.5 1.9l-1.2 4.6h4.4a2.2 2.2 0 0 1 2.1 2.8l-1.4 5.2'
+            + 'a2.2 2.2 0 0 1-2.1 1.6H7.4"/>', {fill:"currentColor", size:16}),
+  spinner: svg('<path d="M12 3.5a8.5 8.5 0 1 1-6 2.5" opacity=".9"/>', {size:15}),
+};
+
+/* A credit lists every act, each its own link — no hover or long-press needed
+   to reach the second name. */
+function credit(song, cls){
+  const ids = song[7] && song[7].length ? song[7] : (song[1] >= 0 ? [song[1]] : []);
+  if(!ids.length) return `<span style="color:var(--dimmer)">Unknown artist</span>`;
+  return ids.map(i => `<b class="${cls||''}" data-ar="${i}" dir="auto">${esc(ARTISTS[i][0])}</b>`)
+            .join('<span class="sep">, </span>');
+}
+
+const RELTAG  = {1:"Single", 2:"EP", 3:"Compilation"};      // 0/4 get no badge
+const RELNAME = {0:"Album", 1:"Single", 2:"EP", 3:"Compilation", 4:"Release"};
+const $ = s => document.querySelector(s);
+const esc = s => (s+"").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nf = n => n.toLocaleString();
+
+function img(packed, size){            // "0:hash" -> full Deezer CDN url
+  if(!packed) return "";
+  const i = packed.indexOf(":");
+  if(i < 0 || !/^\d+$/.test(packed.slice(0,i))) return packed;   // raw url passthrough
+  return `https://cdn-images.dzcdn.net/images/${KINDS[+packed.slice(0,i)]}/${packed.slice(i+1)}/${size}x${size}-000000-80-0-0.jpg`;
+}
+function mmss(s){
+  if(!s) return "";
+  const h = s/3600|0, m = (s%3600)/60|0, x = s%60;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}`
+           : `${m}:${String(x).padStart(2,"0")}`;
+}
+// Deterministic tinted gradient so art-less tiles still look intentional.
+function hue(str){ let h=0; for(let i=0;i<str.length;i++) h=(h*31+str.charCodeAt(i))>>>0; return h%360; }
+function grad(name){
+  const h = hue(name);
+  return `linear-gradient(140deg,hsl(${h} 46% 34%),hsl(${(h+42)%360} 42% 19%))`;
+}
+function initial(name){
+  const c = (name||"?").trim()[0] || "?";
+  return esc(c.toUpperCase());
+}
+// Strip diacritics/punctuation for accent-insensitive search (Hebrew niqqud too).
+const MARKS = /[\u0300-\u036f\u0591-\u05c7]/g;   // Latin combining marks + Hebrew niqqud
+function fold(s){
+  return (s||"").normalize("NFKD").replace(MARKS,"").toLowerCase();
+}
+
+/* ---------- precomputed search keys ---------- */
+const S_KEY = SONGS.map(s =>
+  fold(s[0] + " "
+     + (s[7]||[]).map(i => ARTISTS[i][0] + " " + (ARTISTS[i][5]||"")).join(" ")
+     + " " + (s[2]>=0?ALBUMS[s[2]][0]:"")));
+const AL_KEY = ALBUMS.map(a => fold(a[0] + " " + ARTISTS[a[1]][0] + " " + (ARTISTS[a[1]][5]||"")));
+// Hebrew artists are searchable by their Latin name too ("duda" finds דודא).
+const AR_KEY = ARTISTS.map(a => fold(a[0] + " " + (a[5]||"")));
+
+/* Alphabetical sort keys: drop leading quotes/brackets/punctuation so
+   '...Girl' and "'Til It's Over" file under G and T, not above everything. */
+const LEAD = /^[^\p{L}\p{N}]+/u;
+const sortKey = s => { const t = (s||"").replace(LEAD,""); return t || (s||""); };
+const S_SORT  = SONGS.map(s => sortKey(s[0]));
+const AL_SORT = ALBUMS.map(a => sortKey(a[0]));
+const AR_SORT = ARTISTS.map(a => sortKey(a[0]));
+const END = "￿";   // sorts unknown artist/album last
+
+/* ---------- state ---------- */
+const st = { view:"songs", q:"", acct:"all", ytm:"all", rel:"albums",
+             sort:{songs:"title", albums:"tracks", artists:"tracks"} };
+
+const SORTS = {
+  songs:  [["title","Title"],["artist","Artist"],["album","Album"],["dur","Length"],["orig","Original"]],
+  albums: [["tracks","Liked tracks"],["title","Title"],["artist","Artist"]],
+  artists:[["tracks","Liked tracks"],["albums","Albums"],["name","Name"]],
+};
+
+/* ---------- filtering ---------- */
+function songPass(i){
+  const s = SONGS[i];
+  if(st.acct !== "all"){
+    const a = +st.acct;                     // "both" (2) counts as being in each account
+    if(!(s[5] === a || s[5] === 2)) return false;
+  }
+  if(st.ytm === "1" && !s[6]) return false;
+  return true;
+}
+
+let songIdx = [], albumIdx = [], artistIdx = [], albTracks = null, artTracks = null;
+
+function recompute(){
+  const q = fold(st.q.trim());
+  const terms = q ? q.split(/\s+/) : [];
+  const match = key => terms.every(t => key.includes(t));
+
+  // Songs surviving account/ytm filters — the basis for album/artist counts too,
+  // so the grids stay consistent with the filter bar.
+  const base = [];
+  for(let i=0;i<SONGS.length;i++) if(songPass(i)) base.push(i);
+
+  songIdx = terms.length ? base.filter(i => match(S_KEY[i])) : base.slice();
+
+  albTracks = new Map(); artTracks = new Map();
+  const artAlbums = new Map();
+  for(const i of base){
+    const s = SONGS[i];
+    if(s[2] >= 0) albTracks.set(s[2], (albTracks.get(s[2])||0)+1);
+    for(const a of (s[7]||[])) artTracks.set(a, (artTracks.get(a)||0)+1);
+  }
+  for(const [ai] of albTracks){
+    const ar = ALBUMS[ai][1];
+    if(!artAlbums.has(ar)) artAlbums.set(ar, new Set());
+    artAlbums.get(ar).add(ai);
+  }
+  window.__artAlbums = artAlbums;
+
+  const relOK = i => {
+    const t = ALBUMS[i][5];
+    if(st.rel === "all") return true;
+    // Unidentified multi-track releases count as albums — single-track ones
+    // were already reclassified at build time, so nothing falls through.
+    if(st.rel === "albums") return t === 0 || t === 3 || t === 4;
+    return t === 1 || t === 2;                            // singles + EPs
+  };
+  albumIdx = [...albTracks.keys()]
+    .filter(relOK)
+    .filter(i => !terms.length || match(AL_KEY[i]));
+  artistIdx = [...artTracks.keys()].filter(i => !terms.length || match(AR_KEY[i]));
+
+  sortAll();
+}
+
+const coll = new Intl.Collator(undefined,{sensitivity:"base",numeric:true});
+function sortAll(){
+  const so = st.sort;
+  const sAr = i => SONGS[i][1]>=0 ? AR_SORT[SONGS[i][1]] : END;
+  const sAl = i => SONGS[i][2]>=0 ? AL_SORT[SONGS[i][2]] : END;
+
+  if(so.songs === "title")       songIdx.sort((a,b)=>coll.compare(S_SORT[a],S_SORT[b]));
+  else if(so.songs === "artist") songIdx.sort((a,b)=>coll.compare(sAr(a),sAr(b)) || coll.compare(S_SORT[a],S_SORT[b]));
+  else if(so.songs === "album")  songIdx.sort((a,b)=>coll.compare(sAl(a),sAl(b)) || coll.compare(S_SORT[a],S_SORT[b]));
+  else if(so.songs === "dur")    songIdx.sort((a,b)=>SONGS[b][3]-SONGS[a][3] || coll.compare(S_SORT[a],S_SORT[b]));
+  else                           songIdx.sort((a,b)=>a-b);
+
+  if(so.albums === "tracks")      albumIdx.sort((a,b)=>(albTracks.get(b)-albTracks.get(a)) || coll.compare(AL_SORT[a],AL_SORT[b]));
+  else if(so.albums === "title")  albumIdx.sort((a,b)=>coll.compare(AL_SORT[a],AL_SORT[b]));
+  else                            albumIdx.sort((a,b)=>coll.compare(AR_SORT[ALBUMS[a][1]],AR_SORT[ALBUMS[b][1]]) || coll.compare(AL_SORT[a],AL_SORT[b]));
+
+  const na = i => (window.__artAlbums.get(i)||{size:0}).size;
+  if(so.artists === "tracks")      artistIdx.sort((a,b)=>(artTracks.get(b)-artTracks.get(a)) || coll.compare(AR_SORT[a],AR_SORT[b]));
+  else if(so.artists === "albums") artistIdx.sort((a,b)=>(na(b)-na(a)) || coll.compare(AR_SORT[a],AR_SORT[b]));
+  else                             artistIdx.sort((a,b)=>coll.compare(AR_SORT[a],AR_SORT[b]));
+}
+
+/* ---------- virtualised song list ---------- */
+const ROW_H = 46, PAD = 8;
+const port = $("#songport"), rowsEl = $("#songrows"), mainEl = $("#main");
+let lastWin = [-1,-1];
+
+function renderSongs(force){
+  port.style.height = (songIdx.length*ROW_H + 70) + "px";
+  const top = mainEl.scrollTop, vh = mainEl.clientHeight;
+  let a = Math.max(0, Math.floor(top/ROW_H) - PAD);
+  let b = Math.min(songIdx.length, Math.ceil((top+vh)/ROW_H) + PAD);
+  if(!force && a === lastWin[0] && b === lastWin[1]) return;
+  lastWin = [a,b];
+
+  let h = "";
+  for(let n=a; n<b; n++){
+    const i = songIdx[n], s = SONGS[i];
+    const ar = s[1]>=0 ? ARTISTS[s[1]] : null;
+    const al = s[2]>=0 ? ALBUMS[s[2]] : null;
+    const art = al ? img(al[3],56) : (ar ? img(ar[2],56) : "");
+    const nm = al ? al[0] : (ar ? ar[0] : s[0]);
+    h += `<div class="row${i===curSong?' playing':''}" style="top:${n*ROW_H}px" data-vid="${esc(s[4])}">`
+      +  `<span class="idx">${n+1}</span>`
+      +  (art ? `<img class="art" loading="lazy" src="${art}" alt="" style="background:${grad(nm)}">`
+              : `<span class="art" style="background:${grad(nm)};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:rgba(255,255,255,.8)">${initial(nm)}</span>`)
+      +  `<span class="meta"><span class="t" dir="auto">${esc(s[0])}</span>`
+      +    `<span class="a">${credit(s)}</span></span>`
+      +  `<span class="alb" dir="auto"${al?` data-al="${s[2]}"`:''}>${al?esc(al[0]):''}</span>`
+      +  `<span class="lk${isLiked(i)?' on':''}" data-lk="${esc(s[4])}">`
+      +    (isLiked(i) ? ICON.likeOn : ICON.like) + `</span>`
+      +  `<span class="d">${mmss(s[3])}</span>`
+      +  `<span class="yt">${ICON.rowPlay}</span>`
+      +  `</div>`;
+  }
+  rowsEl.innerHTML = h;
+}
+
+/* ---------- grids ---------- */
+function cardHTML(kind, i){
+  if(kind === "album"){
+    const a = ALBUMS[i], ar = ARTISTS[a[1]], n = albTracks.get(i)||0;
+    const src = img(a[3],250);
+    return `<div class="card album" data-al="${i}">`
+      + `<div class="thumb" style="background:${grad(a[0])}">`
+      + `<span class="fallback">${initial(a[0])}</span>`
+      + (src ? `<img loading="lazy" src="${src}" alt="" onerror="this.remove()">` : "")
+      + (RELTAG[a[5]] ? `<span class="tag">${RELTAG[a[5]]}</span>` : "")
+      + `</div><div class="nm" dir="auto">${esc(a[0])}</div>`
+      + `<div class="sub" dir="auto">${esc(ar[0])} · ${n} liked</div></div>`;
+  }
+  const a = ARTISTS[i], n = artTracks.get(i)||0;
+  const nal = (window.__artAlbums.get(i)||{size:0}).size;
+  const src = img(a[2],250);
+  return `<div class="card artist" data-ar="${i}">`
+    + `<div class="thumb" style="background:${grad(a[0])}">`
+    + `<span class="fallback">${initial(a[0])}</span>`
+    + (src ? `<img loading="lazy" src="${src}" alt="" onerror="this.remove()">` : "")
+    + `</div><div class="nm" dir="auto">${esc(a[0])}</div>`
+    + (a[5] ? `<div class="alt" dir="auto">${esc(a[5])}</div>` : "")
+    + `<div class="sub">${n} liked${nal?` · ${nal} album${nal>1?'s':''}`:''}</div></div>`;
+}
+
+// Grids render in chunks so 3.6k tiles never block the first paint.
+const CHUNK = 120;
+let gridJob = null;
+function renderGrid(el, kind, list){
+  if(gridJob) cancelAnimationFrame(gridJob);
+  el.innerHTML = "";
+  let n = 0;
+  const step = () => {
+    const end = Math.min(list.length, n+CHUNK);
+    let h = "";
+    for(; n<end; n++) h += cardHTML(kind, list[n]);
+    el.insertAdjacentHTML("beforeend", h);
+    gridJob = n < list.length ? requestAnimationFrame(step) : null;
+  };
+  step();
+}
+
+/* ---------- view switching ---------- */
+function render(){
+  const showSongs = st.view === "songs", showAl = st.view === "albums", showAr = st.view === "artists";
+  const n = showSongs ? songIdx.length : showAl ? albumIdx.length : artistIdx.length;
+
+  $("#empty").hidden = n > 0;
+  port.hidden = !showSongs || !n;
+  $("#albumgrid").hidden = !showAl || !n;
+  $("#artistgrid").hidden = !showAr || !n;
+
+  $("#n-songs").textContent = nf(songIdx.length);
+  $("#n-albums").textContent = nf(albumIdx.length);
+  $("#n-artists").textContent = nf(artistIdx.length);
+
+  const onAlbums = st.view === "albums";
+  $("#rel").style.display = onAlbums ? "" : "none";
+  $("#rellbl").style.display = onAlbums ? "" : "none";
+
+  if(showSongs){
+    const secs = songIdx.reduce((t,i)=>t+SONGS[i][3],0);
+    const hrs = Math.round(secs/3600);
+    $("#count").textContent = `${nf(n)} songs${hrs?` · ~${nf(hrs)} h`:""}`;
+    renderSongs(true);
+  } else {
+    $("#count").textContent = `${nf(n)} ${st.view}`;
+    if(showAl) renderGrid($("#albumgrid"), "album", albumIdx);
+    else       renderGrid($("#artistgrid"), "artist", artistIdx);
+  }
+  buildSort();
+}
+
+function buildSort(){
+  const cur = st.sort[st.view];
+  $("#sort").innerHTML = SORTS[st.view]
+    .map(([k,l]) => `<button data-s="${k}" class="${k===cur?'on':''}">${l}</button>`).join("");
+}
+
+function refresh(keepScroll){
+  const y = keepScroll ? mainEl.scrollTop : 0;
+  recompute(); render();
+  mainEl.scrollTop = y; lastWin = [-1,-1];
+  if(st.view === "songs") renderSongs(true);
+}
+
+/* ---------- detail sheet ---------- */
+const sheet = $("#sheet"), scrim = $("#scrim");
+function closeSheet(){
+  sheet.classList.remove("on"); scrim.classList.remove("on");
+  sheetQueue = null; openRef = null; pushRoute();
+}
+scrim.onclick = closeSheet; $("#sheetx").onclick = closeSheet;
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if(e.key === "Escape"){ if(sheet.classList.contains("on")) closeSheet(); }
+  if(e.key === "/" && !typing){ e.preventDefault(); $("#q").focus(); }
+  if(typing || curSong < 0) return;
+  if(e.key === " "){ e.preventDefault(); $("#pplay").click(); }
+  else if(e.key === "ArrowRight" && e.shiftKey){ e.preventDefault(); next(); }
+  else if(e.key === "ArrowLeft"  && e.shiftKey){ e.preventDefault(); prev(); }
+});
+
+function trackRows(list, showAlbum){
+  return list.map((i,n) => {
+    const s = SONGS[i], al = s[2]>=0?ALBUMS[s[2]]:null;
+    return `<div class="row" data-vid="${esc(s[4])}">`
+      + `<span class="idx">${n+1}</span>`
+      + `<span class="meta"><span class="t" dir="auto">${esc(s[0])}</span>`
+      + (showAlbum && al ? `<span class="a" dir="auto">${esc(al[0])}</span>` : "")
+      + `</span><span class="d">${mmss(s[3])}</span>`
+      + `<span class="yt">${ICON.rowPlay}</span></div>`;
+  }).join("");
+}
+
+// Full album running order. Unliked tracks are shown greyed and inert — they
+// have no videoId, so there's nothing to open.
+function albumRows(tl, albumIdx){
+  return tl.map((r,n) => {
+    const si = r[2], playable = si >= 0;
+    const vid = playable ? SONGS[si][4] : "";
+    const on = playable && isLiked(si);          // dimmed means not liked
+    return `<div class="row${on?'':' unliked'}${playable&&si===curSong?' playing':''}"`
+      + (vid ? ` data-vid="${esc(vid)}"` : ` data-unliked="${n}" data-alb="${albumIdx}"`)
+      + `>`
+      + `<span class="idx">${n+1}</span>`
+      + `<span class="meta"><span class="t" dir="auto">${esc(r[0])}</span></span>`
+      + `<span class="lk${on?' on':''}"${vid?` data-lk="${esc(vid)}"`:''}>`
+      +   (on ? ICON.likeOn : ICON.like) + `</span>`
+      + `<span class="d">${mmss(r[1])}</span>`
+      + `<span class="yt">${ICON.rowPlay}</span></div>`;
+  }).join("");
+}
+
+/* An album belongs to whoever is credited across its liked tracks, not just
+   the act it happens to be filed under. */
+function albumCredit(ai){
+  const ids = [];
+  for(const s of SONGS){
+    if(s[2] !== ai) continue;
+    for(const x of (s[7] || [])) if(!ids.includes(x)) ids.push(x);
+  }
+  if(!ids.length) ids.push(ALBUMS[ai][1]);
+  return ids.map(i => `<b data-ar="${i}" dir="auto">${esc(ARTISTS[i][0])}</b>`)
+            .join('<span class="sep">, </span>');
+}
+
+function openAlbum(i){
+  const a = ALBUMS[i], ar = ARTISTS[a[1]];
+  // Deliberately ignores the text query — an album you clicked into should show
+  // its whole tracklist, not just the tracks whose titles matched the search.
+  const use = [];
+  for(let x=0;x<SONGS.length;x++) if(SONGS[x][2]===i && songPass(x)) use.push(x);
+  const secs = use.reduce((t,x)=>t+SONGS[x][3],0);
+  const src = img(a[2],500);
+  const tl = a[6];
+  const nOfficial = tl ? tl.length : 0;
+  const nLiked = tl ? tl.filter(r=>r[2]>=0 && isLiked(r[2])).length : use.length;
+  $("#sheethd").innerHTML =
+      `<div class="thumb" style="background:${grad(a[0])}">`
+    + `<span class="fallback">${initial(a[0])}</span>`
+    + (src?`<img src="${src}" alt="" onerror="this.remove()">`:"")
+    + `</div><div class="info"><div class="kind">${RELNAME[a[5]]}</div><h2 dir="auto">${esc(a[0])}</h2>`
+    + `<div class="by">by ${albumCredit(i)} · `
+    + (tl ? `${nLiked} of ${nOfficial} tracks liked` : `${use.length} liked track${use.length!==1?'s':''}`)
+    + (secs?` · ${mmss(secs)}`:"") + `</div></div>`;
+  $("#sheetbd").innerHTML = tl ? albumRows(tl, i) : trackRows(use, false);
+  sheetQueue = tl ? tl.filter(r=>r[2]>=0).map(r=>r[2]) : use.slice();
+  markPlaying();
+  openRef = {kind:"album", id:albumRefOf(i)};
+  sheet.classList.add("on"); scrim.classList.add("on"); $("#sheetbd").scrollTop = 0;
+  pushRoute();
+}
+
+function openArtist(i){
+  const a = ARTISTS[i];
+  const mine = [];
+  for(let x=0;x<SONGS.length;x++)
+    if(songPass(x) && (SONGS[x][7]||[]).includes(i)) mine.push(x);
+  const albs = [...new Set(mine.map(x=>SONGS[x][2]).filter(x=>x>=0))]
+                 .sort((p,q)=>coll.compare(ALBUMS[p][0],ALBUMS[q][0]));
+  const loose = mine.filter(x => SONGS[x][2] < 0);
+  const secs = mine.reduce((t,x)=>t+SONGS[x][3],0);
+  const src = img(a[1],500);
+
+  $("#sheethd").innerHTML =
+      `<div class="thumb" style="border-radius:50%;background:${grad(a[0])}">`
+    + `<span class="fallback">${initial(a[0])}</span>`
+    + (src?`<img src="${src}" alt="" onerror="this.remove()">`:"")
+    + `</div><div class="info"><div class="kind">Artist${a[5]?` · ${esc(a[5])}`:""}</div>`
+    + `<h2 dir="auto">${esc(a[0])}</h2>`
+    + `<div class="by">${mine.length} liked track${mine.length!==1?'s':''}`
+    + (albs.length?` · ${albs.length} album${albs.length>1?'s':''}`:"")
+    + (secs?` · ${mmss(secs)}`:"") + `</div></div>`;
+
+  let h = "";
+  if(albs.length){
+    h += `<div class="grp">Albums</div><div class="minigrid">`;
+    for(const ai of albs){
+      const al = ALBUMS[ai], s2 = img(al[3],250);
+      const cnt = mine.filter(x=>SONGS[x][2]===ai).length;
+      h += `<div class="card album" data-al="${ai}"><div class="thumb" style="background:${grad(al[0])}">`
+        + `<span class="fallback" style="font-size:22px">${initial(al[0])}</span>`
+        + (s2?`<img loading="lazy" src="${s2}" alt="" onerror="this.remove()">`:"")
+        + `</div><div class="nm" dir="auto" style="font-size:12px">${esc(al[0])}</div>`
+        + `<div class="sub">${cnt} liked</div></div>`;
+    }
+    h += `</div>`;
+  }
+  if(loose.length){
+    h += `<div class="grp">${albs.length?"Other tracks":"Tracks"}</div>` + trackRows(loose, false);
+  }
+  $("#sheetbd").innerHTML = h || `<div class="empty">No tracks under the current filters.</div>`;
+  sheetQueue = mine.slice();
+  markPlaying();
+  openRef = {kind:"artist", id:a[6]};
+  sheet.classList.add("on"); scrim.classList.add("on"); $("#sheetbd").scrollTop = 0;
+  pushRoute();
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e => {
+  const arEl = e.target.closest("[data-ar]");
+  if(arEl){ e.stopPropagation(); openArtist(+arEl.dataset.ar); return; }
+  const alEl = e.target.closest("[data-al]");
+  if(alEl && alEl.dataset.al !== ""){ e.stopPropagation(); openAlbum(+alEl.dataset.al); return; }
+  const lk = e.target.closest(".lk");
+  if(lk){
+    e.stopPropagation();
+    if(!CAN_RATE){ note("Liking needs the launcher and a one-time YouTube Music sign-in"); return; }
+    const vid = lk.dataset.lk;
+    if(!vid) return;
+    const on = !lk.classList.contains("on");
+    lk.style.opacity = ".35";
+    rate(vid, on).then(ok => {
+      lk.style.opacity = "";
+      if(!ok) return;
+      lk.classList.toggle("on", on);
+      lk.innerHTML = on ? ICON.likeOn : ICON.like;
+      const r = lk.closest(".row");
+      if(r) r.classList.toggle("unliked", !on);
+      if(curSong >= 0 && SONGS[curSong][4] === vid) paintHeart();
+      if(openRef && openRef.kind === "album"){
+        const hd = $("#sheethd .by"), i = findAlbumByRef(openRef.id);
+        if(hd && i >= 0 && ALBUMS[i][6]){
+          const t = ALBUMS[i][6];
+          hd.innerHTML = hd.innerHTML.replace(/\d+ of \d+ tracks liked/,
+            t.filter(x=>x[2]>=0 && isLiked(x[2])).length + " of " + t.length + " tracks liked");
+        }
+      }
+    });
+    return;
+  }
+
+  const grey = e.target.closest(".row[data-unliked]");
+  if(grey){ playUnliked(grey); return; }
+
+  const row = e.target.closest(".row[data-vid]");
+  if(row && row.dataset.vid){
+    // Cmd/Ctrl-click keeps the old behaviour: straight out to YouTube.
+    if(e.metaKey || e.ctrlKey){ window.open(ytUrl(row.dataset.vid), "_blank", "noopener"); return; }
+    playFromRow(row);
+  }
+});
+
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on", x===t));
+  st.view = t.dataset.v; closeSheet();
+  mainEl.scrollTop = 0; lastWin = [-1,-1];
+  render(); pushRoute();
+});
+
+$("#sort").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  st.sort[st.view] = b.dataset.s;
+  sortAll(); mainEl.scrollTop = 0; lastWin = [-1,-1]; render(); pushRoute();
+};
+$("#acct").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  $("#acct").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+  st.acct = b.dataset.a; refresh(false); pushRoute();
+};
+$("#rel").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  $("#rel").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+  st.rel = b.dataset.r; refresh(false); pushRoute();
+};
+$("#ytm").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  $("#ytm").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+  st.ytm = b.dataset.y; refresh(false); pushRoute();
+};
+
+let t0 = null;
+$("#q").addEventListener("input", e => {
+  st.q = e.target.value;
+  $("#searchwrap").classList.toggle("has", !!st.q);
+  clearTimeout(t0); t0 = setTimeout(()=>{ refresh(false); pushRoute(); }, 110);
+});
+$("#clr").onclick = () => {
+  $("#q").value = ""; st.q = "";
+  $("#searchwrap").classList.remove("has"); refresh(false); pushRoute();
+};
+
+// Keep the scroll area flush under the header at any width (controls can wrap).
+const hdr = document.querySelector("header");
+const fitHeader = () => {
+  document.documentElement.style.setProperty("--head", hdr.offsetHeight + "px");
+  if(st.view === "songs") renderSongs(true);
+};
+new ResizeObserver(fitHeader).observe(hdr);
+fitHeader();
+
+mainEl.addEventListener("scroll", () => { if(st.view === "songs") renderSongs(false); }, {passive:true});
+window.addEventListener("resize", () => { if(st.view === "songs") renderSongs(true); });
+
+/* ---------- playback ---------- */
+/* Two engines, both playing inside the page — a click never opens a tab.
+     api   : YouTube IFrame API. True position, seek, and ENDED events.
+     embed : plain iframe driven by postMessage. This is the file:// path —
+             there window.origin is "null", YouTube drops the API handshake and
+             onReady never fires. Playback, play/pause, seek and volume still
+             work; position is estimated from the track length we already know,
+             and end-of-track is inferred from it. */
+
+const ytUrl = v => "https://www.youtube.com/watch?v=" + encodeURIComponent(v);
+
+// The IFrame API stamps origin=<page origin> into the embed URL. From file://
+// that is "file://" (or null), YouTube rejects it with error 153 on every video,
+// and — crucially — the API still reports ready, so a readiness timeout never
+// catches it. Decide up front instead.
+const IS_FILE = location.protocol === "file:";
+let mode = IS_FILE ? "embed" : "api", YTP = null, ytReady = false, pending = null;
+let apiErrors = 0;
+let queue = [], qpos = -1, curSong = -1, seeking = false, tick = null;
+let sheetQueue = null, pipShownOnce = false;
+let fbTime = 0, fbDur = 0, fbPlaying = false;
+
+const playerEl = $("#player"), pipEl = $("#pip");
+
+function setPlayerHeight(){
+  document.documentElement.style.setProperty(
+    "--player-h", playerEl.classList.contains("on") ? playerEl.offsetHeight + "px" : "0px");
+}
+function note(msg){
+  const n = $("#pnote");
+  n.textContent = msg; n.classList.add("on");
+  clearTimeout(n._t); n._t = setTimeout(() => n.classList.remove("on"), 3600);
+}
+function paintPlayState(playing){ $("#pplay").innerHTML = playing ? ICON.pause : ICON.play; }
+// mmss() yields "" for 0 (an unknown track length); the transport clock needs 0:00.
+const clk = sec => mmss(Math.max(0, Math.floor(sec))) || "0:00";
+
+if(!IS_FILE) (function loadYT(){
+  const t = document.createElement("script");
+  t.src = "https://www.youtube.com/iframe_api";
+  t.onerror = useEmbed;
+  document.head.appendChild(t);
+  setTimeout(() => { if(!ytReady) useEmbed(); }, 6000);
+})();
+
+window.onYouTubeIframeAPIReady = function(){
+  if(mode !== "api") return;
+  YTP = new YT.Player("ytframe", {
+    height:"100%", width:"100%",
+    playerVars:{autoplay:1, controls:0, disablekb:1, modestbranding:1,
+                rel:0, playsinline:1, iv_load_policy:3},
+    events:{
+      onReady: () => {
+        ytReady = true;
+        YTP.setVolume(+$("#pvol").value);
+        if(pending !== null){ const x = pending; pending = null; load(x); }
+      },
+      onStateChange: e => {
+        if(e.data === YT.PlayerState.PLAYING) apiErrors = 0;
+        if(e.data === YT.PlayerState.ENDED) return next();
+        paintPlayState(e.data === YT.PlayerState.PLAYING);
+        if(e.data === YT.PlayerState.PLAYING) startTick(); else stopTick();
+      },
+      onError: e => {
+        // 153 / 101 / 150 = this page isn't allowed to embed, not a bad video.
+        if(e.data === 153 || ++apiErrors >= 3){
+          note("Switching player engine…");
+          useEmbed();
+          if(curSong >= 0) load(curSong);
+          return;
+        }
+        note(e.data === 100 ? "Video unavailable — skipping"
+                            : "Uploader blocked embedding — skipping");
+        setTimeout(next, 1500);
+      },
+    },
+  });
+};
+
+function useEmbed(){
+  if(mode === "embed") return;
+  mode = "embed";
+  try { if(YTP && YTP.destroy) YTP.destroy(); } catch(_) {}
+  ytReady = false;
+  pipEl.innerHTML = '<div id="ytframe"></div>';
+  if(pending !== null){ const x = pending; pending = null; load(x); }
+}
+
+function fbSend(func, args){
+  const f = pipEl.querySelector("iframe");
+  if(f && f.contentWindow)
+    f.contentWindow.postMessage(JSON.stringify({event:"command", func, args:args||[]}), "*");
+}
+function fbLoad(vid){
+  pipEl.innerHTML = '<iframe allow="autoplay; encrypted-media" allowfullscreen src="'
+    + "https://www.youtube.com/embed/" + encodeURIComponent(vid)
+    + '?autoplay=1&enablejsapi=1&controls=0&modestbranding=1&rel=0&playsinline=1"></iframe>';
+  fbTime = 0; fbPlaying = true;
+  paintPlayState(true); startTick();
+}
+// If YouTube does post progress back, prefer it over the local estimate.
+window.addEventListener("message", ev => {
+  if(mode !== "embed") return;
+  let host = ""; try { host = new URL(ev.origin).hostname; } catch(_) { return; }
+  if(!/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return;
+  let d; try { d = JSON.parse(ev.data); } catch(_) { return; }
+  if(d && (d.event === "onError" || (d.info && d.info.errorCode))){
+    embedFailed();
+    return;
+  }
+  const info = d && d.info;
+  if(!info) return;
+  if(typeof info.currentTime === "number") fbTime = info.currentTime;
+  if(typeof info.duration === "number" && info.duration > 0) fbDur = info.duration;
+  if(typeof info.playerState === "number"){
+    const ps = info.playerState;              // -1 unstarted · 0 ended · 1 playing
+    if(ps === 0) return next();               //  2 paused · 3 buffering · 5 cued
+    if(ps === 1 || ps === 2){
+      fbPlaying = ps === 1;
+      paintPlayState(fbPlaying);
+      if(fbPlaying) startTick();
+    }
+    // 3 (buffering) keeps the current state; -1/5 are pre-roll noise.
+  }
+});
+
+// If even the plain embed is refused, stop guessing and say what to do.
+let toldAboutLauncher = false;
+function embedFailed(){
+  stopTick(); fbPlaying = false; paintPlayState(false);
+  if(IS_FILE && !toldAboutLauncher){
+    toldAboutLauncher = true;
+    note("YouTube won't play from a local file — run \u201CPlay Music Library.command\u201D in this folder");
+    $("#pnote").classList.add("on");     // keep this one up; it needs reading
+    clearTimeout($("#pnote")._t);
+  } else {
+    note("Couldn't play this one — try \u2197 to open it on YouTube");
+  }
+}
+
+function startTick(){
+  stopTick();
+  tick = setInterval(() => {
+    if(seeking) return;
+    let c, d;
+    if(mode === "api"){
+      if(!ytReady || !YTP.getDuration) return;
+      d = YTP.getDuration() || 0; c = YTP.getCurrentTime() || 0;
+    } else {
+      if(fbPlaying) fbTime += 0.5;
+      c = fbTime; d = fbDur || (curSong >= 0 ? SONGS[curSong][3] : 0);
+      if(d > 0 && c >= d + 0.5) return next();
+    }
+    if(d > 0){
+      $("#pseek").value = Math.min(1000, Math.round(c / d * 1000));
+      $("#pcur").textContent = clk(c);
+      $("#pdur").textContent = clk(d);
+    }
+  }, 500);
+}
+function stopTick(){ if(tick){ clearInterval(tick); tick = null; } }
+
+function markPlaying(){
+  document.querySelectorAll(".row.playing").forEach(r => r.classList.remove("playing"));
+  if(st.view === "songs") renderSongs(true);
+  document.querySelectorAll("#sheetbd .row[data-vid]").forEach(r => {
+    if(curSong >= 0 && r.dataset.vid === SONGS[curSong][4]) r.classList.add("playing");
+  });
+}
+
+function load(si){
+  curSong = si;
+  const s = SONGS[si];
+  const ar = s[1] >= 0 ? ARTISTS[s[1]] : null;
+  const al = s[2] >= 0 ? ALBUMS[s[2]] : null;
+
+  playerEl.classList.add("on"); setPlayerHeight();
+  $("#ptitle").textContent = s[0];
+  $("#partist").innerHTML = credit(s);
+  const art = al ? img(al[3],250) : (ar ? img(ar[2],250) : "");
+  const cov = $("#pcover");
+  if(art){ cov.src = art; cov.style.background = ""; }
+  else { cov.removeAttribute("src"); cov.style.background = grad(s[0]); }
+  $("#pcur").textContent = "0:00";
+  $("#pdur").textContent = clk(s[3]);
+  $("#pseek").value = 0;
+  fbDur = s[3] || 0;
+
+  // Reveal the video the first time, so the bar doesn't look inert.
+  if(!pipShownOnce){
+    pipEl.classList.remove("off"); $("#pvid").classList.add("act"); pipShownOnce = true;
+  }
+
+  paintHeart();
+
+  if(mode === "api"){
+    if(!ytReady){ pending = si; markPlaying(); return; }
+    YTP.loadVideoById(s[4]);
+  } else {
+    fbLoad(s[4]);
+  }
+  markPlaying();
+}
+
+/* A greyed track has no videoId — the export only ever held liked songs. Ask
+   the local server to find it on YouTube Music, then play it like anything else. */
+async function playUnliked(row){
+  if(!CAN_SEARCH){
+    note(API ? "Search is unavailable — is ytmusicapi installed?"
+             : "Playing unliked tracks needs the launcher");
+    return;
+  }
+  const ai = +row.dataset.alb, n = +row.dataset.unliked;
+  const al = ALBUMS[ai]; if(!al || !al[6]) return;
+  const tr = al[6][n]; if(!tr) return;
+  const artist = ARTISTS[al[1]][0];
+
+  row.classList.add("resolving");
+  const vid = await resolveTrack(artist, tr[0], al[0]);
+  row.classList.remove("resolving");
+  if(!vid){ note("Couldn't find “" + tr[0] + "” on YouTube Music"); return; }
+
+  // Give it a real row so the transport, like button and queue all work.
+  SONGS.push([tr[0], al[1], ai, tr[1], vid, 2, 1, [al[1]]]);
+  const si = SONGS.length - 1;
+  S_KEY.push(fold(tr[0] + " " + artist + " " + al[0]));
+  S_SORT.push(sortKey(tr[0]));
+  tr[2] = si;
+  LIKES.set(vid, "NONE");            // present but not liked — no thumbs-up yet
+  openAlbum(ai);                      // repaint the sheet with it now playable
+  const q = al[6].filter(r => r[2] >= 0).map(r => r[2]);
+  playQueue(q, Math.max(0, q.indexOf(si)));
+}
+
+function playQueue(list, startIdx){
+  queue = list.slice(); qpos = Math.max(0, startIdx); load(queue[qpos]);
+}
+function next(){
+  if(qpos < 0) return;
+  if(qpos + 1 >= queue.length){ paintPlayState(false); stopTick(); return; }
+  qpos++; load(queue[qpos]);
+}
+function seekTo(sec){
+  if(mode === "api"){ if(ytReady) YTP.seekTo(sec, true); return; }
+  fbTime = sec; fbSend("seekTo", [sec, true]);
+  // Paused: the tick isn't running, so repaint the readout now.
+  const d = fbDur || (curSong >= 0 ? SONGS[curSong][3] : 0);
+  $("#pcur").textContent = clk(sec);
+  if(d > 0) $("#pseek").value = Math.min(1000, Math.round(sec / d * 1000));
+}
+function prev(){
+  if(qpos < 0) return;
+  const at = mode === "api" ? (ytReady && YTP.getCurrentTime ? YTP.getCurrentTime() : 0) : fbTime;
+  if(at > 3 || qpos === 0){ seekTo(0); return; }
+  qpos--; load(queue[qpos]);
+}
+
+/* Songs view plays the visible list; a detail sheet plays that album or artist
+   in its own order. */
+function playFromRow(row){
+  const vid = row.dataset.vid;
+  if(row.closest("#sheetbd") && sheetQueue){
+    const at = sheetQueue.findIndex(si => SONGS[si][4] === vid);
+    if(at >= 0) return playQueue(sheetQueue, at);
+  }
+  if(row.closest("#songrows")){
+    const at = songIdx.findIndex(si => SONGS[si][4] === vid);
+    if(at >= 0) return playQueue(songIdx, at);
+  }
+  const si = SONGS.findIndex(x => x[4] === vid);
+  if(si >= 0) playQueue([si], 0);
+}
+
+$("#pplay").onclick = () => {
+  if(curSong < 0) return;
+  if(mode === "api"){
+    if(!ytReady) return;
+    if(YTP.getPlayerState() === YT.PlayerState.PLAYING) YTP.pauseVideo(); else YTP.playVideo();
+  } else {
+    fbPlaying = !fbPlaying;
+    fbSend(fbPlaying ? "playVideo" : "pauseVideo");
+    paintPlayState(fbPlaying);
+  }
+};
+function paintHeart(){
+  const b = $("#plike");
+  if(curSong < 0){ b.innerHTML = ICON.like; b.classList.remove("on"); return; }
+  const on = isLiked(curSong);
+  b.innerHTML = on ? ICON.likeOn : ICON.like;
+  b.classList.toggle("on", on);
+  b.title = on ? "Remove like on YouTube Music" : "Like on YouTube Music";
+}
+$("#plike").onclick = async () => {
+  if(curSong < 0) return;
+  if(!CAN_RATE){
+    note(API ? "Run \u201CSet up YouTube Music login.command\u201D to like from here"
+             : "Liking needs the launcher \u2014 run \u201CPlay Music Library.command\u201D");
+    return;
+  }
+  const want = !isLiked(curSong);
+  $("#plike").classList.add("busy");
+  const ok = await rate(SONGS[curSong][4], want);
+  $("#plike").classList.remove("busy");
+  if(ok){
+    paintHeart(); markPlaying();
+    if(openRef && openRef.kind === "album"){
+      const i = findAlbumByRef(openRef.id);
+      if(i >= 0) openAlbum(i);
+    }
+    note(want ? "Liked on YouTube Music" : "Like removed");
+  }
+};
+
+$("#pnext").onclick = next;
+$("#pprev").onclick = prev;
+$("#pvid").onclick = () => {
+  pipEl.classList.toggle("off");
+  $("#pvid").classList.toggle("act", !pipEl.classList.contains("off"));
+};
+$("#pshuffle").onclick = () => {
+  if(queue.length < 2) return;
+  const cur = queue[qpos], rest = queue.filter((_, i) => i !== qpos);
+  for(let i = rest.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  queue = [cur, ...rest]; qpos = 0;
+  note("Queue shuffled — " + queue.length + " tracks");
+};
+$("#pyt").onclick = () => { if(curSong >= 0) window.open(ytUrl(SONGS[curSong][4]), "_blank", "noopener"); };
+$("#pclose").onclick = () => {
+  if(mode === "api" && ytReady) YTP.stopVideo(); else pipEl.innerHTML = "";
+  stopTick(); playerEl.classList.remove("on"); pipEl.classList.add("off");
+  $("#pvid").classList.remove("act");
+  curSong = -1; qpos = -1; queue = []; fbPlaying = false;
+  setPlayerHeight(); markPlaying();
+};
+$("#pvol").oninput = e => {
+  if(mode === "api"){ if(ytReady) YTP.setVolume(+e.target.value); }
+  else fbSend("setVolume", [+e.target.value]);
+};
+$("#pseek").addEventListener("input", () => { seeking = true; });
+$("#pseek").addEventListener("change", e => {
+  const d = mode === "api" ? (ytReady && YTP.getDuration ? YTP.getDuration() : 0)
+                           : (fbDur || (curSong >= 0 ? SONGS[curSong][3] : 0));
+  if(d > 0) seekTo(d * (+e.target.value / 1000));
+  seeking = false;
+});
+// each name in the player's credit is its own link, handled by the global
+// [data-ar] click handler
+$("#pprev").innerHTML = ICON.prev;
+$("#pnext").innerHTML = ICON.next;
+$("#pplay").innerHTML = ICON.play;
+$("#plike").innerHTML = ICON.like;
+$("#pshuffle").innerHTML = ICON.shuffle;
+$("#pvid").innerHTML = ICON.video;
+$("#pyt").innerHTML = ICON.ext;
+$("#pclose").innerHTML = ICON.close;
+$("#pvolicon").innerHTML = ICON.vol;
+$("#sheetx").innerHTML = ICON.close;
+$("#clr").innerHTML = ICON.close;
+new ResizeObserver(setPlayerHeight).observe(playerEl);
+
+/* ---------- local server bridge ---------- */
+/* The static page can't search YouTube or rate a song. When it's served by
+   library_build/server.py those become available; opened as a bare file they
+   simply stay off and the UI hides what it can't do. */
+
+const API = (location.protocol === "http:" || location.protocol === "https:")
+  ? location.origin : null;
+
+let CAN_SEARCH = false, CAN_RATE = false;
+const LIKES = new Map();          // videoId -> "LIKE" | "DISLIKE"
+const RESOLVED = new Map();       // "artist␟title␟album" -> videoId | null
+
+async function apiStatus(){
+  if(!API) return;
+  try {
+    const r = await fetch(API + "/api/status");
+    if(!r.ok) return;
+    const d = await r.json();
+    CAN_SEARCH = !!d.search; CAN_RATE = !!d.rate;
+    for(const [v, k] of Object.entries(d.likes || {})) LIKES.set(v, k);
+    document.body.classList.toggle("can-rate", CAN_RATE);
+    document.body.classList.toggle("can-search", CAN_SEARCH);
+    if(curSong >= 0) paintHeart();
+    markPlaying();
+  } catch(_) {}
+}
+
+async function resolveTrack(artist, title, album){
+  const key = artist + "\u241F" + title + "\u241F" + (album || "");
+  if(RESOLVED.has(key)) return RESOLVED.get(key);
+  if(!API || !CAN_SEARCH) return null;
+  const q = new URLSearchParams({artist: artist || "", title, album: album || ""});
+  try {
+    const r = await fetch(API + "/api/resolve?" + q);
+    const d = await r.json();
+    const v = d.videoId || null;
+    RESOLVED.set(key, v);
+    return v;
+  } catch(_) { return null; }
+}
+
+async function rate(videoId, on){
+  if(!API || !CAN_RATE || !videoId) return false;
+  try {
+    const r = await fetch(API + "/api/rate", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({videoId, rating: on ? "LIKE" : "INDIFFERENT"}),
+    });
+    const d = await r.json();
+    if(!r.ok){ note(d.hint || d.error || "Couldn't reach YouTube Music"); return false; }
+    if(on) LIKES.set(videoId, "LIKE"); else LIKES.delete(videoId);
+    return true;
+  } catch(_) { note("Couldn't reach YouTube Music"); return false; }
+}
+
+/* Everything in the CSV was liked when it was exported; anything we rated since
+   overrides that. */
+function isLiked(si){
+  const v = SONGS[si] && SONGS[si][4];
+  if(!v) return false;
+  if(LIKES.has(v)) return LIKES.get(v) === "LIKE";
+  return si < ORIGINAL_SONGS;      // everything in the export was liked
+}
+
+/* ---------- routing ---------- */
+/* State lives in location.hash so a refresh (and the back button) lands where
+   you were. Hash rather than History API because this page is often opened as
+   a local file, where pushState paths don't resolve. Albums and artists are
+   addressed by name, not index, so links survive a rebuild that reorders them. */
+
+let routing = false;                       // suppress echo while we apply a route
+
+function currentRoute(){
+  const p = new URLSearchParams();
+  p.set("view", st.view);
+  if(st.q) p.set("q", st.q);
+  if(st.acct !== "all") p.set("acct", st.acct);
+  if(st.ytm !== "all") p.set("ytm", st.ytm);
+  if(st.view === "albums" && st.rel !== "albums") p.set("rel", st.rel);
+  const so = st.sort[st.view];
+  if(so !== {songs:"title", albums:"tracks", artists:"tracks"}[st.view]) p.set("sort", so);
+  if(sheet.classList.contains("on") && openRef) p.set(openRef.kind, openRef.id);
+  return p.toString();
+}
+
+let openRef = null;    // {kind:"album"|"artist", id:"<name>" | "<artist>␟<album>"}
+
+function pushRoute(){
+  if(routing) return;
+  const h = "#" + currentRoute();
+  if(h !== location.hash) history.replaceState(null, "", h);
+}
+
+/* URLs are ASCII slugs, never the display name — Hebrew titles would arrive
+   percent-encoded and unreadable. Slugs are built from the artist's Latin name
+   where one exists, transliteration otherwise. */
+const ALBUM_BY_SLUG = new Map(ALBUMS.map((a, i) => [a[7], i]));
+const ARTIST_BY_SLUG = new Map(ARTISTS.map((a, i) => [a[6], i]));
+
+function albumRefOf(i){ return ALBUMS[i][7]; }
+function findAlbumByRef(ref){
+  const i = ALBUM_BY_SLUG.get(ref);
+  return i === undefined ? -1 : i;
+}
+
+function applyRoute(){
+  const raw = location.hash.replace(/^#/, "");
+  const p = new URLSearchParams(raw);
+  routing = true;
+
+  const v = p.get("view");
+  if(v === "songs" || v === "albums" || v === "artists") st.view = v;
+  st.q = p.get("q") || "";
+  st.acct = p.get("acct") || "all";
+  st.ytm = p.get("ytm") || "all";
+  st.rel = p.get("rel") || "albums";
+  const so = p.get("sort");
+  if(so) st.sort[st.view] = so;
+
+  $("#q").value = st.q;
+  $("#searchwrap").classList.toggle("has", !!st.q);
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.v === st.view));
+  $("#acct").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.a === st.acct));
+  $("#ytm").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.y === st.ytm));
+  $("#rel").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.r === st.rel));
+
+  recompute(); render();
+
+  const alRef = p.get("album"), arRef = p.get("artist");
+  if(alRef){
+    const i = findAlbumByRef(alRef);
+    if(i >= 0) openAlbum(i); else closeSheet();
+  } else if(arRef){
+    const i = ARTIST_BY_SLUG.has(arRef) ? ARTIST_BY_SLUG.get(arRef) : -1;
+    if(i >= 0) openArtist(i); else closeSheet();
+  } else closeSheet();
+
+  routing = false;
+}
+
+window.addEventListener("hashchange", () => { if(!routing) applyRoute(); });
+
+/* ---------- boot ---------- */
+$("#brandsub").textContent =
+  `${nf(SONGS.length)} liked · ${nf(ARTISTS.length)} artists · ${nf(ALBUMS.length)} albums`;
+
+apiStatus();
+if(location.hash.length > 1){ applyRoute(); }
+else { refresh(false); pushRoute(); }
+</script>
+</body>
+</html>

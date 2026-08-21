@@ -17,3 +17,7 @@ music-library/*.log
 music-library/library.html
 music-library/liked_music_deduped.csv
 music-library/mb_probe.json
+
+# wrangler local state
+.wrangler/
+**/__pycache__/

@@ -1,0 +1,25 @@
+name = "music-library"
+main = "index.js"
+compatibility_date = "2026-01-01"
+
+# The page shell is static; every byte of library data comes from /api/library,
+# which refuses to answer without a session.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Static assets are served before the Worker by default, which would hand
+# index.html (and every byte of the library) to anyone. The auth check has to
+# run first; the Worker fetches from ASSETS itself once a session is proven.
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "openlibrary"
+database_id = "499365fa-69e6-4bd1-b063-92a660b52246"
+
+[[r2_buckets]]
+binding = "ART"
+bucket_name = "music-art"
+
+[vars]
+GOOGLE_CLIENT_ID = "192394903567-brveabamu9pb0v6s2avqe6a2d4e7u01b.apps.googleusercontent.com"
