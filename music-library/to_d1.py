@@ -137,9 +137,8 @@ def main():
 
     items = []
     for n, s in enumerate(S):
-        credit = ", ".join(A[x][0] for x in (s[7] or []) if x >= 0)
-        ident = {"videoId": s[4], "account": s[5], "inYtMusic": bool(s[6]),
-                 "seconds": s[3]}
+        credit = ", ".join(A[x][0] for x in (s[5] or []) if x >= 0)
+        ident = {"videoId": s[4], "seconds": s[3]}
         items.append([
             f"i_{uid}_{n}", uid, "music", s[0], credit, None, "liked", None,
             "[]", "", json.dumps(ident, ensure_ascii=False),
@@ -155,7 +154,7 @@ def main():
 
     links = []
     for n, s_ in enumerate(S):
-        for pos, ai in enumerate(s_[7] or []):
+        for pos, ai in enumerate(s_[5] or []):
             if ai >= 0:
                 links.append([f"i_{uid}_{n}", akey[ai], pos])
     out += list(batched(links, "item_artists", ["item_id", "music_key", "position"]))
@@ -164,7 +163,7 @@ def main():
     for n, s_ in enumerate(S):
         if s_[2] is None or s_[2] < 0:
             continue
-        for pos, ai in enumerate(s_[7] or []):
+        for pos, ai in enumerate(s_[5] or []):
             if ai < 0:
                 continue
             pair = (alkey[s_[2]], akey[ai])

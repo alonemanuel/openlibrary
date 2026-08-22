@@ -161,18 +161,18 @@ async function libraryFor(db, email) {
     const ais = artistsOf.get(r.id) || [];
     const ali = r.music_key != null ? (albumIx.get(r.music_key) ?? -1) : -1;
     return [r.title, ais.length ? ais[0] : -1, ali, id.seconds || 0,
-            id.videoId || '', id.account ?? 2, id.inYtMusic ? 1 : 0, ais];
+            id.videoId || '', ais];
   });
 
   // Counts and tracklists, matching what the build used to precompute.
   songs.forEach((s, n) => {
-    for (const a of s[7]) artists[a][3]++;
+    for (const a of s[5]) artists[a][3]++;
     if (s[2] >= 0) albums[s[2]][4]++;
   });
   const artAlbums = new Map();
   songs.forEach((s) => {
     if (s[2] < 0) return;
-    for (const a of s[7]) {
+    for (const a of s[5]) {
       (artAlbums.get(a) || artAlbums.set(a, new Set()).get(a)).add(s[2]);
     }
   });

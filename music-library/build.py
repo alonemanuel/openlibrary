@@ -244,7 +244,6 @@ def main():
     artist_ix, artists = {}, []
     album_ix, albums, alb_ckey = {}, [], []
     songs = []
-    ACCT = {"personal": 0, "gsuite": 1, "both": 2}
     n_clean = 0
 
     for r in rows:
@@ -255,8 +254,6 @@ def main():
         al = norm(r.get("album"))
         dur = norm(r.get("duration"))
         vid = norm(r.get("videoIds"))
-        acct = ACCT.get(norm(r.get("account")), 2)
-        ytm = 1 if norm(r.get("in_ytmusic")) == "yes" else 0
 
         ais = []
         for member in (credit_members.get(raw_ar) or []):
@@ -301,15 +298,15 @@ def main():
                 alb_ckey.append(ckey)
             li = album_ix[k]
 
-        songs.append([title, ai, li, secs(dur), vid, acct, ytm, ais])
+        songs.append([title, ai, li, secs(dur), vid, ais])
 
     alb_tracks = collections.Counter(s[2] for s in songs if s[2] >= 0)
-    art_tracks = collections.Counter(a for s in songs for a in s[7])
+    art_tracks = collections.Counter(a for s in songs for a in s[5])
     # An album shows on every credited artist's page, not only the lead's.
     art_albums = collections.defaultdict(set)
     for s_ in songs:
         if s_[2] >= 0:
-            for a in s_[7]:
+            for a in s_[5]:
                 art_albums[a].add(s_[2])
     for i, a in enumerate(albums):
         a[4] = alb_tracks.get(i, 0)
