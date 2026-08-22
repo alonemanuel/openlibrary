@@ -13,11 +13,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CSV = os.environ.get(
-    "MUSIC_CSV",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                 "liked_music_deduped.csv"))
-CACHE = os.path.join(HERE, "art_cache.json")
+DATA = os.path.dirname(HERE)                 # data lives one level above the scripts
+CSV = os.environ.get("MUSIC_CSV", os.path.join(DATA, "liked_music_deduped.csv"))
+CACHE = os.path.join(DATA, "art_cache.json")
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) music-library-page/1.0"
 BLANK = "d41d8cd98f00b204e9800998ecf8427e"
 

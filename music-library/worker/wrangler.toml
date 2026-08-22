@@ -1,5 +1,5 @@
 name = "music-library"
-main = "index.js"
+main = "index.ts"
 compatibility_date = "2026-01-01"
 
 # The page shell is static; every byte of library data comes from /api/library,

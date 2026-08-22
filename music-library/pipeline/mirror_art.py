@@ -17,7 +17,7 @@ import hashlib, json, os, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CACHE = os.path.join(HERE, "art_cache.json")
+CACHE = os.path.join(os.path.dirname(HERE), "art_cache.json")
 OUT = os.environ.get("MUSIC_ART_DIR") or os.path.expanduser("~/.musiclib/art")
 MANIFEST = os.path.join(OUT, "manifest.json")
 UA = "music-library-mirror/1.0"
