@@ -9,20 +9,42 @@
  * which expires hourly; the Google token is verified once at sign-in.
  */
 
+interface Env {
+  DB: D1Database;
+  ART: R2Bucket;
+  ASSETS: Fetcher;
+  SESSION_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+}
+
+interface Session {
+  email: string;
+  exp: number;
+}
+
+interface GoogleClaims {
+  iss: string;
+  aud: string;
+  exp: number;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+}
+
 const SESSION_COOKIE = 'ml_session';
 const SESSION_DAYS = 30;
 const GOOGLE_CERTS = 'https://www.googleapis.com/oauth2/v3/certs';
 const GOOGLE_ISS = ['https://accounts.google.com', 'accounts.google.com'];
 
 const enc = new TextEncoder();
-const b64urlDecode = (s) =>
+const b64urlDecode = (s: string): Uint8Array =>
   Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')
     .padEnd(s.length + ((4 - (s.length % 4)) % 4), '=')), (c) => c.charCodeAt(0));
-const b64urlEncode = (buf) =>
-  btoa(String.fromCharCode(...new Uint8Array(buf)))
+const b64urlEncode = (buf: ArrayBuffer | Uint8Array): string =>
+  btoa(String.fromCharCode(...new Uint8Array(buf instanceof Uint8Array ? buf.buffer : buf)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-const json = (body, status = 200, headers = {}) =>
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8',
@@ -31,23 +53,23 @@ const json = (body, status = 200, headers = {}) =>
 
 /* ---------- Google ID token ---------- */
 
-let certsCache = { at: 0, keys: null };
+let certsCache: { at: number; keys: JsonWebKey[] | null } = { at: 0, keys: null };
 
-async function googleKeys() {
+async function googleKeys(): Promise<JsonWebKey[]> {
   if (certsCache.keys && Date.now() - certsCache.at < 3600_000) return certsCache.keys;
-  const jwks = await (await fetch(GOOGLE_CERTS)).json();
+  const jwks = await (await fetch(GOOGLE_CERTS)).json<{ keys: JsonWebKey[] }>();
   certsCache = { at: Date.now(), keys: jwks.keys };
   return jwks.keys;
 }
 
 /** Verifies signature, issuer, audience and expiry. Returns the claims. */
-async function verifyGoogleToken(idToken, clientId) {
+async function verifyGoogleToken(idToken: string, clientId: string): Promise<GoogleClaims> {
   const [h, p, s] = (idToken || '').split('.');
   if (!h || !p || !s) throw new Error('malformed token');
-  const header = JSON.parse(new TextDecoder().decode(b64urlDecode(h)));
-  const claims = JSON.parse(new TextDecoder().decode(b64urlDecode(p)));
+  const header = JSON.parse(new TextDecoder().decode(b64urlDecode(h))) as { kid?: string };
+  const claims = JSON.parse(new TextDecoder().decode(b64urlDecode(p))) as GoogleClaims;
 
-  const jwk = (await googleKeys()).find((k) => k.kid === header.kid);
+  const jwk = (await googleKeys()).find((k) => (k as { kid?: string }).kid === header.kid);
   if (!jwk) throw new Error('unknown signing key');
 
   const key = await crypto.subtle.importKey(
@@ -65,20 +87,20 @@ async function verifyGoogleToken(idToken, clientId) {
 
 /* ---------- our session cookie ---------- */
 
-async function hmac(secret, msg) {
+async function hmac(secret: string, msg: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return b64urlEncode(await crypto.subtle.sign('HMAC', key, enc.encode(msg)));
 }
 
-async function makeSession(secret, email) {
+async function makeSession(secret: string, email: string): Promise<string> {
   const body = b64urlEncode(enc.encode(JSON.stringify({
     email, exp: Date.now() + SESSION_DAYS * 864e5,
   })));
   return `${body}.${await hmac(secret, body)}`;
 }
 
-async function readSession(secret, cookieHeader) {
+async function readSession(secret: string, cookieHeader: string | null): Promise<Session | null> {
   const raw = (cookieHeader || '').split(/;\s*/)
     .find((c) => c.startsWith(SESSION_COOKIE + '='))?.slice(SESSION_COOKIE.length + 1);
   if (!raw) return null;
@@ -87,43 +109,89 @@ async function readSession(secret, cookieHeader) {
   // Constant-time-ish: compare the recomputed signature, never the payload.
   if (await hmac(secret, body) !== sig) return null;
   try {
-    const s = JSON.parse(new TextDecoder().decode(b64urlDecode(body)));
+    const s = JSON.parse(new TextDecoder().decode(b64urlDecode(body))) as Session;
     return s.exp > Date.now() ? s : null;
   } catch { return null; }
 }
 
 /* ---------- library ---------- */
 
+/* The page consumes positional tuples rather than keyed objects: the arrays
+   are large and the client indexes into them constantly. The layouts are
+   documented where the page decodes them (public/index.html, "song tuple"). */
+type ArtistTuple = [
+  name: string, pic: string, picSm: string,
+  nTracks: number, nAlbums: number, latinName: string, slug: string,
+];
+type TrackTuple = [title: string, seconds: number, likedSongIdx: number];
+type AlbumTuple = [
+  name: string, artistIdx: number, cover: string, coverSm: string,
+  nTracks: number, releaseType: number, tracklist: TrackTuple[] | null, slug: string,
+];
+type SongTuple = [
+  title: string, leadArtistIdx: number, albumIdx: number, seconds: number,
+  videoId: string, account: number, inYtMusic: number, allArtistIdxs: number[],
+];
+
+interface Library {
+  songs: SongTuple[];
+  artists: ArtistTuple[];
+  albums: AlbumTuple[];
+  kinds: string[];
+  email: string;
+}
+
+interface AssetRow {
+  music_key: string;
+  kind: string;
+  display_name: string;
+  slug: string;
+  source_url: string | null;
+  image_sm_url: string | null;
+  latin_name: string | null;
+  release_type: string | null;
+  n_tracks: number | null;
+}
+interface TrackRow { music_key: string; title: string; seconds: number | null }
+interface ItemRow {
+  id: number;
+  title: string;
+  identifiers: string | null;
+  music_key: string | null;
+  track_pos: number | null;
+}
+interface ItemArtistRow { item_id: number; music_key: string; position: number }
+interface AlbumArtistRow { album_key: string; artist_key: string; position: number }
+
 /** Rebuilds exactly the DATA shape the page already understands, scoped to
  *  one user. Index-based rather than keyed so the client stays unchanged:
  *  the arrays are large and the page indexes into them constantly. */
-async function libraryFor(db, email) {
-  const user = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+async function libraryFor(db: D1Database, email: string): Promise<Library | null> {
+  const user = await db.prepare('SELECT id FROM users WHERE email = ?')
+    .bind(email).first<{ id: number }>();
   if (!user) return null;
   const uid = user.id;
 
   const [assetsQ, tracksQ, itemsQ, iaQ, aaQ] = await Promise.all([
     db.prepare(`SELECT music_key, kind, display_name, slug, source_url, image_sm_url,
-                       latin_name, release_type, n_tracks FROM media_assets`).all(),
+                       latin_name, release_type, n_tracks FROM media_assets`).all<AssetRow>(),
     db.prepare(`SELECT music_key, title, seconds FROM release_tracks
-                ORDER BY music_key, position`).all(),
+                ORDER BY music_key, position`).all<TrackRow>(),
     db.prepare(`SELECT id, title, identifiers, music_key, track_pos FROM items
-                WHERE user_id = ? AND deleted_at IS NULL ORDER BY rowid`).bind(uid).all(),
+                WHERE user_id = ? AND deleted_at IS NULL ORDER BY rowid`).bind(uid).all<ItemRow>(),
     db.prepare(`SELECT ia.item_id, ia.music_key, ia.position FROM item_artists ia
                 JOIN items i ON i.id = ia.item_id WHERE i.user_id = ?
-                ORDER BY ia.item_id, ia.position`).bind(uid).all(),
+                ORDER BY ia.item_id, ia.position`).bind(uid).all<ItemArtistRow>(),
     db.prepare(`SELECT album_key, artist_key, position FROM album_artists
-                ORDER BY album_key, position`).all(),
+                ORDER BY album_key, position`).all<AlbumArtistRow>(),
   ]);
 
   // Only the artists and albums this user actually touches are worth shipping.
   const usedArtist = new Set(iaQ.results.map((r) => r.music_key));
   const usedAlbum = new Set(itemsQ.results.map((r) => r.music_key).filter(Boolean));
 
-  const artistIx = new Map(), albumIx = new Map();
-  const artists = [], albums = [];
-  const assetByKey = new Map();
-  for (const a of assetsQ.results) assetByKey.set(a.music_key, a);
+  const artistIx = new Map<string, number>(), albumIx = new Map<string, number>();
+  const artists: ArtistTuple[] = [], albums: AlbumTuple[] = [];
 
   for (const a of assetsQ.results) {
     if (a.kind !== 'artist' || !usedArtist.has(a.music_key)) continue;
@@ -131,33 +199,38 @@ async function libraryFor(db, email) {
     artists.push([a.display_name, a.source_url || '', a.image_sm_url || a.source_url || '',
                   0, 0, a.latin_name || '', a.slug]);
   }
-  const RT = { album: 0, single: 1, ep: 2, compilation: 3 };
+  const RT: Record<string, number> = { album: 0, single: 1, ep: 2, compilation: 3 };
   for (const a of assetsQ.results) {
     if (a.kind !== 'album' || !usedAlbum.has(a.music_key)) continue;
     albumIx.set(a.music_key, albums.length);
     const lead = aaQ.results.find((x) => x.album_key === a.music_key);
     albums.push([a.display_name, lead ? (artistIx.get(lead.artist_key) ?? -1) : -1,
                  a.source_url || '', a.image_sm_url || a.source_url || '',
-                 0, RT[a.release_type] ?? 4, null, a.slug]);
+                 0, (a.release_type != null ? RT[a.release_type] : undefined) ?? 4, null, a.slug]);
   }
 
   // Official running order, so unliked tracks can render greyed.
-  const byAlbum = new Map();
+  const byAlbum = new Map<string, TrackTuple[]>();
   for (const t of tracksQ.results) {
     if (!albumIx.has(t.music_key)) continue;
-    (byAlbum.get(t.music_key) || byAlbum.set(t.music_key, []).get(t.music_key))
-      .push([t.title, t.seconds || 0, -1]);
+    let rows = byAlbum.get(t.music_key);
+    if (!rows) byAlbum.set(t.music_key, rows = []);
+    rows.push([t.title, t.seconds || 0, -1]);
   }
 
-  const artistsOf = new Map();
+  const artistsOf = new Map<number, number[]>();
   for (const r of iaQ.results) {
     const ix = artistIx.get(r.music_key);
     if (ix === undefined) continue;
-    (artistsOf.get(r.item_id) || artistsOf.set(r.item_id, []).get(r.item_id)).push(ix);
+    let list = artistsOf.get(r.item_id);
+    if (!list) artistsOf.set(r.item_id, list = []);
+    list.push(ix);
   }
 
-  const songs = itemsQ.results.map((r) => {
-    const id = JSON.parse(r.identifiers || '{}');
+  const songs: SongTuple[] = itemsQ.results.map((r) => {
+    const id = JSON.parse(r.identifiers || '{}') as {
+      seconds?: number; videoId?: string; account?: number; inYtMusic?: boolean;
+    };
     const ais = artistsOf.get(r.id) || [];
     const ali = r.music_key != null ? (albumIx.get(r.music_key) ?? -1) : -1;
     return [r.title, ais.length ? ais[0] : -1, ali, id.seconds || 0,
@@ -165,15 +238,17 @@ async function libraryFor(db, email) {
   });
 
   // Counts and tracklists, matching what the build used to precompute.
-  songs.forEach((s, n) => {
+  songs.forEach((s) => {
     for (const a of s[7]) artists[a][3]++;
     if (s[2] >= 0) albums[s[2]][4]++;
   });
-  const artAlbums = new Map();
+  const artAlbums = new Map<number, Set<number>>();
   songs.forEach((s) => {
     if (s[2] < 0) return;
     for (const a of s[7]) {
-      (artAlbums.get(a) || artAlbums.set(a, new Set()).get(a)).add(s[2]);
+      let set = artAlbums.get(a);
+      if (!set) artAlbums.set(a, set = new Set());
+      set.add(s[2]);
     }
   });
   for (const [a, set] of artAlbums) artists[a][4] = set.size;
@@ -198,7 +273,7 @@ async function libraryFor(db, email) {
 /* ---------- routes ---------- */
 
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const secret = env.SESSION_SECRET;
     const clientId = env.GOOGLE_CLIENT_ID;
@@ -209,21 +284,21 @@ export default {
 
     if (url.pathname === '/api/session' && request.method === 'POST') {
       if (!clientId || !secret) return json({ error: 'auth not configured' }, 503);
-      let claims;
+      let claims: GoogleClaims;
       try {
-        const { credential } = await request.json();
+        const { credential } = await request.json<{ credential: string }>();
         claims = await verifyGoogleToken(credential, clientId);
       } catch (e) {
-        return json({ error: 'sign-in failed: ' + e.message }, 401);
+        return json({ error: 'sign-in failed: ' + (e instanceof Error ? e.message : e) }, 401);
       }
       const known = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
-        .bind(claims.email).first();
+        .bind(claims.email).first<{ id: number }>();
       if (!known) {
         // Signed in with Google, but no library here. Say so plainly rather
         // than creating an empty account for anyone who finds the URL.
         return json({ error: 'no library for ' + claims.email }, 403);
       }
-      const cookie = `${SESSION_COOKIE}=${await makeSession(secret, claims.email)}; ` +
+      const cookie = `${SESSION_COOKIE}=${await makeSession(secret, claims.email!)}; ` +
         `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 86400}`;
       return json({ email: claims.email, name: claims.name || null }, 200,
                   { 'set-cookie': cookie });
