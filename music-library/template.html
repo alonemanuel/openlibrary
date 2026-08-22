@@ -76,22 +76,6 @@
   .bar .spacer{flex:1}
   .count{font-variant-numeric:tabular-nums;color:var(--dimmer);font-size:12px}
 
-  /* ---------- account ---------- */
-  /* Only shown when the Worker served the page with a session attached; the
-     offline copy has no account, so there is nothing to sign out of. */
-  .account{display:flex;align-items:center;gap:9px;flex:none;margin-left:12px}
-  .account .who{color:var(--dimmer);font-size:12px;max-width:190px;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .account.err .who{color:#ffb4b4}
-  .account .signout{
-    display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;
-    background:var(--panel);border:1px solid var(--line);color:var(--dim);
-    font-size:12.5px;line-height:1;white-space:nowrap;
-  }
-  .account .signout:hover{background:#1e1e27;color:var(--fg);border-color:#3a3a48}
-  .account .signout:disabled{opacity:.55;cursor:default}
-  .account .signout svg{display:block}
-
   /* ---------- scroll area ---------- */
   main{position:fixed;top:var(--head);left:0;right:0;bottom:var(--player-h,0px);
     overflow-y:auto;overflow-x:hidden}
@@ -133,9 +117,6 @@
   @media(max-width:700px){
     .top{flex-wrap:wrap;gap:8px}
     .search{max-width:none;margin-left:0;order:3;flex-basis:100%}
-    .account{margin-left:auto}
-    .account .who{display:none}
-    .account.err .who{display:block}
     .bar .spacer{display:none}
     .bar .count{width:100%}
     nav{padding-top:4px}
@@ -306,16 +287,6 @@
         <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search songs, artists, albums…" autocomplete="off" spellcheck="false">
       <button class="clr" id="clr" title="Clear">×</button>
-    </div>
-    <div class="account" id="account" hidden>
-      <span class="who" id="who"></span>
-      <button class="signout" id="signout">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"/>
-          <path d="M15 17l5-5-5-5"/><path d="M20 12H9"/></svg>
-        Sign out
-      </button>
     </div>
   </div>
 
@@ -1453,33 +1424,6 @@ window.addEventListener("hashchange", () => { if(!routing) applyRoute(); });
 /* ---------- boot ---------- */
 $("#brandsub").textContent =
   `${nf(SONGS.length)} liked · ${nf(ARTISTS.length)} artists · ${nf(ALBUMS.length)} albums`;
-
-/* ---------- account ---------- */
-/* The Worker attaches the signed-in address to the library it serves, so its
-   presence is what tells us there is a session to end. The offline copy is
-   built without one and never shows the control. */
-if(DATA.email){
-  const acct = $("#account"), who = $("#who"), out = $("#signout");
-  who.textContent = DATA.email;
-  who.title = DATA.email;
-  acct.hidden = false;
-  out.addEventListener("click", async () => {
-    out.disabled = true;
-    acct.classList.remove("err");
-    try{
-      const r = await fetch("/api/logout", {method:"POST"});
-      if(!r.ok) throw new Error(r.status);
-      // The cookie is HttpOnly, so only the server can clear it — reload and
-      // let the Worker hand back the sign-in page.
-      location.reload();
-    }catch{
-      // Say so rather than leaving a dead button: the session is still live.
-      out.disabled = false;
-      acct.classList.add("err");
-      who.textContent = "Sign-out failed — try again";
-    }
-  });
-}
 
 apiStatus();
 if(location.hash.length > 1){ applyRoute(); }
