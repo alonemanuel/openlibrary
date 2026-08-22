@@ -66,7 +66,8 @@ def main():
     a = ap.parse_args()
 
     html = io.open(a.html, encoding="utf-8").read()
-    data = json.loads(re.search(r"const DATA = (\{.*?\});\n", html, re.S).group(1))
+    # The shell declares `let DATA`; older offline builds said `const`.
+    data = json.loads(re.search(r"(?:const|let) DATA = (\{.*?\});\n", html, re.S).group(1))
     A, AL, S = data["artists"], data["albums"], data["songs"]
     KINDS = data["kinds"]
 
