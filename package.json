@@ -1,30 +1,22 @@
 {
-  "name": "openlibrary",
+  "name": "music-library",
   "private": true,
   "version": "0.1.0",
-  "description": "Open Library — your music, books and movies, in a library you own.",
+  "description": "Your liked songs as a library you own — a Cloudflare Worker, plus an offline build pipeline.",
   "type": "module",
-  "workspaces": [
-    "server",
-    "web",
-    "music-library/worker"
-  ],
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22"
   },
   "scripts": {
-    "dev": "npm run dev --workspace server & npm run dev --workspace web",
-    "dev:server": "npm run dev --workspace server",
-    "dev:web": "npm run dev --workspace web",
-    "build": "npm run build --workspace server && npm run build --workspace web",
-    "start": "npm run start --workspace server",
-    "test": "npm run test --workspace server",
+    "dev": "npx wrangler dev --config worker/wrangler.toml",
     "lint": "eslint .",
-    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web && npm run typecheck --workspace music-library/worker"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260820.1",
     "eslint": "^10.9.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
+    "typescript": "^5.7.2",
     "typescript-eslint": "^8.67.0"
   }
 }

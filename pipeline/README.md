@@ -5,8 +5,8 @@ artwork URLs. It's a single self-contained file: open it in a browser, no server
 
 This folder is only the offline build pipeline; the deployed site lives in
 `../worker/` and never runs any of this. Data files (the CSV export,
-`art_cache.json`, the generated `library.html`) live one level up, in
-`music-library/` — all gitignored.
+`art_cache.json`, the generated `library.html`) live one level up, in the
+repository root — all gitignored.
 
 ## Files
 

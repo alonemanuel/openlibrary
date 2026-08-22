@@ -32,7 +32,7 @@ jobs:
 
       - name: The shell must carry no library data
         run: |
-          shell=music-library/worker/public/index.html
+          shell=worker/public/index.html
           test -f "$shell"
           grep -q '/\*__DATA__\*/null' "$shell" \
             || { echo "::error::shell lost its data placeholder"; exit 1; }
@@ -42,7 +42,7 @@ jobs:
 
       - name: The worker must run before static assets
         run: |
-          grep -q '^run_worker_first = true' music-library/worker/wrangler.toml \
+          grep -q '^run_worker_first = true' worker/wrangler.toml \
             || { echo "::error::run_worker_first is not set — assets would bypass auth"; exit 1; }
 
       # A pull request uploads a version and gets its own URL, but takes no
@@ -53,7 +53,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          workingDirectory: music-library/worker
+          workingDirectory: worker
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           command: versions upload
 
@@ -88,7 +88,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          workingDirectory: music-library/worker
+          workingDirectory: worker
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
 
       # Deploying is not the same as being safe. Prove the live site refuses to
