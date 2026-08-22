@@ -14,16 +14,13 @@ from slug import slug, short_hash, unique_slugs
 from credits import split_credit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CSV = os.environ.get(
-    "MUSIC_CSV",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                 "liked_music_deduped.csv"))
-CACHE = os.path.join(HERE, "art_cache.json")
+DATA = os.path.dirname(HERE)                 # data lives one level above the scripts
+CSV = os.environ.get("MUSIC_CSV", os.path.join(DATA, "liked_music_deduped.csv"))
+CACHE = os.path.join(DATA, "art_cache.json")
 NAMES = os.path.join(HERE, "names.json")     # curated Hebrew/Arabic -> English
-TEMPLATE = os.path.join(HERE, "template.html")
-# Alongside the export, one level up from the scripts.
-OUT = os.environ.get("MUSIC_OUT") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "library.html")
+TEMPLATE = os.path.join(DATA, "template.html")
+# Alongside the export, next to the template.
+OUT = os.environ.get("MUSIC_OUT") or os.path.join(DATA, "library.html")
 
 DZ_RE = re.compile(r"https://(?:e-)?cdn-images\.dzcdn\.net/images/([a-z]+)/([0-9a-f]+)/")
 KINDS = ["cover", "artist", "misc", "playlist", "user", "talk"]
