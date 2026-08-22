@@ -6,7 +6,8 @@
   "type": "module",
   "workspaces": [
     "server",
-    "web"
+    "web",
+    "music-library/worker"
   ],
   "engines": {
     "node": ">=22.5"
@@ -18,6 +19,6 @@
     "build": "npm run build --workspace server && npm run build --workspace web",
     "start": "npm run start --workspace server",
     "test": "npm run test --workspace server",
-    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web"
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web && npm run typecheck --workspace music-library/worker"
   }
 }
