@@ -400,6 +400,24 @@
     .minigrid{grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
   }
 
+  /* ---------- context menu ---------- */
+  /* Above the player and the video pip: it is opened on top of whatever the
+     pointer is over, so nothing may cover it. */
+  .ctxmenu{
+    position:fixed;z-index:70;min-width:190px;max-width:280px;padding:6px;border-radius:12px;
+    background:var(--bg2);border:1px solid var(--line);box-shadow:var(--shadow-card-hi);
+  }
+  .ctxmenu .citem{
+    display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;
+    border-radius:8px;color:var(--fg);font-size:13.5px;text-align:left;
+  }
+  .ctxmenu .citem:hover,.ctxmenu .citem:focus{background:var(--hover);outline:none}
+  .ctxmenu .citem svg{display:block;flex:none;opacity:.7}
+  .ctxmenu .citem span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* A long press is our own gesture on touch; iOS must not answer it with the
+     image callout it would otherwise show over the artwork. */
+  .row,.card{-webkit-touch-callout:none}
+
   /* ---------- playback bar ---------- */
   #player{
     position:fixed;left:0;right:0;bottom:0;z-index:60;height:74px;
@@ -591,6 +609,8 @@
   </div>
 </div>
 
+<div class="ctxmenu" id="ctxmenu" role="menu" hidden></div>
+
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet">
   <button class="x" id="sheetx">×</button>
@@ -650,6 +670,9 @@ const ICON = {
             + '<path d="m7.4 10.6 4.3-6.8a2 2 0 0 1 3.5 1.9l-1.2 4.6h4.4a2.2 2.2 0 0 1 2.1 2.8l-1.4 5.2'
             + 'a2.2 2.2 0 0 1-2.1 1.6H7.4"/>', {fill:"currentColor", size:16}),
   spinner: svg('<path d="M12 3.5a8.5 8.5 0 1 1-6 2.5" opacity=".9"/>', {size:15}),
+  artist: svg('<circle cx="12" cy="8" r="3.7"/>'
+            + '<path d="M5.2 19.6a6.9 6.9 0 0 1 13.6 0"/>', {size:16}),
+  album:  svg('<circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="2.3"/>', {size:16}),
 };
 
 /* A credit lists every act, each its own link — no hover or long-press needed
@@ -1063,6 +1086,151 @@ function openArtist(i){
   sheet.classList.add("on"); scrim.classList.add("on"); $("#sheetbd").scrollTop = 0;
   pushRoute();
 }
+
+/* ---------- context menu ---------- */
+/* Right-clicking (or long-pressing) a song or an album offers the two jumps the
+   list layout can't always spare room for: through to the artist, and through
+   to the release the track sits on. */
+const ctxEl = $("#ctxmenu");
+let ctxItems = [];
+let pressTimer = null, pressAt = null, longPressed = false;   // touch long-press
+
+/* What the pointer landed on, as {album, artists}; null where neither applies —
+   an artist tile already goes to its artist on a plain click. */
+function ctxTargetAt(node){
+  if(!node || !node.closest) return null;
+  const row = node.closest(".row");
+  if(row) return ctxTargetOfRow(row);
+  const card = node.closest(".card.album[data-al]");
+  if(card){
+    const ai = +card.dataset.al;
+    return ALBUMS[ai] ? {album:ai, artists:[ALBUMS[ai][1]]} : null;
+  }
+  return null;
+}
+
+function ctxTargetOfRow(row){
+  if(row.dataset.vid){
+    // Rows carry a videoId, not a song index — the same lookup playFromRow does.
+    const si = SONGS.findIndex(x => x[4] === row.dataset.vid);
+    if(si < 0) return null;
+    const s = SONGS[si];
+    return {album:s[2], artists:(s[5] && s[5].length) ? s[5] : (s[1] >= 0 ? [s[1]] : [])};
+  }
+  // A greyed album track has no song row of its own, but its release is known.
+  if(row.dataset.alb !== undefined){
+    const ai = +row.dataset.alb;
+    return ALBUMS[ai] ? {album:ai, artists:[ALBUMS[ai][1]]} : null;
+  }
+  return null;
+}
+
+/* One credit means one unambiguous "Go to artist"; a shared credit names each
+   act instead, so the menu says which one it is about to open. */
+function ctxItemsFor(t){
+  const ids = (t.artists || []).filter(i => ARTISTS[i]);
+  const items = ids.map(i => ({
+    label: ids.length > 1 ? "Go to " + ARTISTS[i][0] : "Go to artist",
+    icon: ICON.artist,
+    run: () => openArtist(i),
+  }));
+  if(t.album >= 0 && ALBUMS[t.album])
+    items.push({label:"Go to album", icon:ICON.album, run:() => openAlbum(t.album)});
+  return items;
+}
+
+function openCtx(x, y, items){
+  ctxItems = items;
+  ctxEl.innerHTML = items.map((it, n) =>
+    `<button class="citem" type="button" role="menuitem" data-n="${n}">`
+    + it.icon + `<span dir="auto">${esc(it.label)}</span></button>`).join("");
+  ctxEl.hidden = false;
+  // Keep it on screen: near an edge it slides back in rather than being clipped.
+  const m = 8;
+  ctxEl.style.left = Math.max(m, Math.min(x, innerWidth  - ctxEl.offsetWidth  - m)) + "px";
+  ctxEl.style.top  = Math.max(m, Math.min(y, innerHeight - ctxEl.offsetHeight - m)) + "px";
+  const first = ctxEl.querySelector(".citem");
+  if(first) first.focus();
+}
+
+function closeCtx(){
+  if(ctxEl.hidden) return;
+  ctxEl.hidden = true; ctxEl.innerHTML = ""; ctxItems = [];
+}
+
+document.addEventListener("contextmenu", e => {
+  closeCtx();
+  const t = ctxTargetAt(e.target);
+  const items = t ? ctxItemsFor(t) : [];
+  if(!items.length) return;          // nothing to offer — leave the browser's own menu
+  e.preventDefault();
+  openCtx(e.clientX, e.clientY, items);
+});
+
+ctxEl.addEventListener("click", e => {
+  const b = e.target.closest(".citem");
+  if(!b) return;
+  e.stopPropagation();               // the row underneath must not also start playing
+  const it = ctxItems[+b.dataset.n];
+  closeCtx();
+  if(it) it.run();
+});
+
+mainEl.addEventListener("scroll", closeCtx, {passive:true});
+$("#sheetbd").addEventListener("scroll", closeCtx, {passive:true});
+window.addEventListener("resize", closeCtx);
+
+/* Capture, because the page's own click handler stops propagation on rows. */
+document.addEventListener("click", e => {
+  if(e.target.closest("#ctxmenu")) return;
+  // The click that ends a long press opened this menu; it is not a dismissal.
+  if(longPressed){ longPressed = false; e.preventDefault(); e.stopPropagation(); return; }
+  closeCtx();
+}, true);
+
+/* Also capture: the menu owns these keys while it is open, and the page's own
+   handler would otherwise read Space as play/pause and Escape as close-sheet. */
+document.addEventListener("keydown", e => {
+  if(ctxEl.hidden) return;
+  if(e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); closeCtx(); return; }
+  if(e.key === "Tab"){ e.preventDefault(); e.stopPropagation(); return; }
+  if(e.key === " " || e.key === "Enter"){ e.stopPropagation(); return; }   // let the button take it
+  if(e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  e.preventDefault(); e.stopPropagation();
+  const btns = [...ctxEl.querySelectorAll(".citem")];
+  if(!btns.length) return;
+  const at = btns.indexOf(document.activeElement), d = e.key === "ArrowDown" ? 1 : -1;
+  btns[at < 0 ? (d > 0 ? 0 : btns.length - 1) : (at + d + btns.length) % btns.length].focus();
+}, true);
+
+/* Touch has no right-click, so a half-second press opens the same menu. */
+function cancelPress(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer = null; } }
+
+document.addEventListener("touchstart", e => {
+  cancelPress();
+  longPressed = false;
+  if(e.touches.length !== 1) return;
+  const t = e.touches[0];
+  pressAt = {x:t.clientX, y:t.clientY};
+  // Resolve now: song rows are virtualised and the node may be recycled later.
+  const target = ctxTargetAt(e.target);
+  pressTimer = setTimeout(() => {
+    pressTimer = null;
+    const items = target ? ctxItemsFor(target) : [];
+    if(!items.length) return;
+    longPressed = true;
+    openCtx(pressAt.x, pressAt.y, items);
+  }, 500);
+}, {passive:true});
+
+document.addEventListener("touchmove", e => {
+  const t = e.touches[0];
+  if(!t || !pressAt) return;
+  // A press that has turned into a scroll or a swipe is no longer a long press.
+  if(Math.abs(t.clientX - pressAt.x) > 10 || Math.abs(t.clientY - pressAt.y) > 10) cancelPress();
+}, {passive:true});
+document.addEventListener("touchend", cancelPress, {passive:true});
+document.addEventListener("touchcancel", () => { cancelPress(); longPressed = false; }, {passive:true});
 
 /* ---------- events ---------- */
 document.addEventListener("click", e => {
