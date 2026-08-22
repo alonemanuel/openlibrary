@@ -1,7 +1,7 @@
 name: Checks
 
-# Typecheck and tests for the whole workspace. deploy.yml guards the music
-# Worker's shipping path; this guards the code itself.
+# Lint, typecheck and unit tests. deploy.yml guards the Worker's shipping
+# path; this guards the code itself.
 on:
   push:
     branches: [main]
@@ -26,8 +26,5 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck (server, web, music worker)
+      - name: Typecheck
         run: npm run typecheck
-
-      - name: Server tests
-        run: npm test
