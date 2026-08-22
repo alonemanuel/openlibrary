@@ -17,7 +17,7 @@ artwork URLs. It's a single self-contained file: open it in a browser, no server
 | `match.py` | Pairs liked songs to official tracks (exact → feature-stripped → fuzzy). |
 | `clean.py` | Title tidying + Hebrew/Latin name splitting. Run it directly to see its test cases. |
 | `build.py` | Merges CSV + cache into `../library.html`. |
-| `template.html` | The page. `build.py` injects data where `/*__DATA__*/null` appears. |
+| `worker/public/index.html` | The page — single source of truth. `build.py` injects data where `/*__DATA__*/null` appears; the Cloudflare Worker injects a signed-in user's library at request time. The file on disk must keep the placeholder intact (CI enforces this on deploy). |
 | `art_cache.json` | Cached artwork URLs. Only URLs are stored — no images are downloaded. |
 
 ## Rebuild after re-exporting your likes
