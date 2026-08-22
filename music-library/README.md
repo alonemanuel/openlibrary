@@ -11,6 +11,10 @@ Two independent halves:
   and the SQL that loads D1 (`to_d1.py`). Runs on your machine, standard
   library only. See `pipeline/README.md`.
 
-`template.html` is the page shell the pipeline builds from. Generated and
-personal data files (`liked_music_deduped.csv`, `art_cache.json`,
-`library.html`) also land in this folder and are gitignored.
+The page shell is `worker/public/index.html` — the single source of truth.
+`build.py` injects data into a copy of it for the offline page; the Worker
+injects a signed-in user's library at request time. The file on disk must keep
+its `/*__DATA__*/null` placeholder intact (deploy CI enforces this).
+
+Generated and personal data files (`liked_music_deduped.csv`,
+`art_cache.json`, `library.html`) land in this folder and are gitignored.

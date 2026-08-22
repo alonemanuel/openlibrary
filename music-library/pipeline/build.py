@@ -18,8 +18,12 @@ DATA = os.path.dirname(HERE)                 # data lives one level above the sc
 CSV = os.environ.get("MUSIC_CSV", os.path.join(DATA, "liked_music_deduped.csv"))
 CACHE = os.path.join(DATA, "art_cache.json")
 NAMES = os.path.join(HERE, "names.json")     # curated Hebrew/Arabic -> English
-TEMPLATE = os.path.join(DATA, "template.html")
-# Alongside the export, next to the template.
+# The deployed Worker shell is the single source of truth for the page. The
+# offline build injects DATA into a copy of it; the Worker injects a signed-in
+# user's library into the same file at request time. Keep it data-free on disk
+# (the deploy CI asserts the /*__DATA__*/null placeholder is intact).
+TEMPLATE = os.path.join(DATA, "worker", "public", "index.html")
+# Alongside the export, one level above the scripts.
 OUT = os.environ.get("MUSIC_OUT") or os.path.join(DATA, "library.html")
 
 DZ_RE = re.compile(r"https://(?:e-)?cdn-images\.dzcdn\.net/images/([a-z]+)/([0-9a-f]+)/")
@@ -385,13 +389,8 @@ def main():
             "src": "liked_music_deduped.csv"}
 
     html = open(TEMPLATE, encoding="utf-8").read()
-    if os.environ.get("MUSIC_SHELL"):
-        # Leave the placeholder intact: the Worker substitutes one user's
-        # library at request time, so the file on disk holds nobody's data.
-        pass
-    else:
-        html = html.replace("/*__DATA__*/null",
-                            json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    html = html.replace("/*__DATA__*/null",
+                        json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html)
 

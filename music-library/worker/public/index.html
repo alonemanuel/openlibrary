@@ -173,6 +173,38 @@
     display:flex;align-items:center;justify-content:center;
   }
 
+  /* ---------- profile ---------- */
+  /* Only shown when the Worker served the page with a session attached; the
+     offline copy has no account, so there is nothing to sign out of. */
+  .profile{position:relative;flex:none}
+  .avatar{
+    width:32px;height:32px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11.5px;font-weight:650;letter-spacing:.02em;color:#fff;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+  }
+  .avatar:hover{filter:brightness(1.08)}
+  .avatar[aria-expanded="true"]{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--line-strong)}
+  .pmenu{
+    display:none;position:absolute;right:0;top:calc(100% + 9px);z-index:50;
+    min-width:216px;padding:6px;border-radius:12px;
+    background:var(--bg2);border:1px solid var(--line);box-shadow:var(--shadow-card);
+  }
+  .pmenu.open{display:block}
+  .pmenu .pmail{
+    display:block;padding:8px 10px 9px;font-size:12px;color:var(--dim);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .pmenu .psep{height:1px;margin:2px 0 3px;background:var(--line)}
+  .pmenu .pitem{
+    display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;
+    border-radius:8px;color:var(--fg);font-size:13.5px;text-align:left;
+  }
+  .pmenu .pitem:hover{background:var(--hover)}
+  .pmenu .pitem:disabled{opacity:.55;cursor:default;background:none}
+  .pmenu .pitem svg{display:block;flex:none;opacity:.7}
+  .pmenu .perr{padding:1px 10px 7px;font-size:11.5px;color:var(--accent)}
+
   /* ---------- scroll area ---------- */
   main{position:fixed;top:var(--head);left:0;right:0;bottom:var(--player-h,0px);
     overflow-y:auto;overflow-x:hidden}
@@ -226,6 +258,9 @@
     .search{flex:1 1 auto;min-width:0;max-width:none;margin-left:0}
     .search input{padding:7px 30px}
     .themetog{width:30px;height:30px}
+    /* The address needs room a phone header hasn't got; the button keeps
+       its label, and an error still shows because it has to be readable. */
+    .avatar{width:30px;height:30px;font-size:11px}
 
     nav{padding:6px 8px 0}
     .tab{padding:6px 10px 10px;font-size:14px}
@@ -469,6 +504,22 @@
         <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search songs, artists, albums…" autocomplete="off" spellcheck="false">
       <button class="clr" id="clr" title="Clear">×</button>
+    </div>
+    <div class="profile" id="profile" hidden>
+      <button class="avatar" id="avatar" type="button"
+              aria-haspopup="menu" aria-expanded="false" aria-controls="pmenu"></button>
+      <div class="pmenu" id="pmenu" role="menu">
+        <span class="pmail" id="pmail"></span>
+        <div class="psep"></div>
+        <button class="pitem" id="logout" type="button" role="menuitem">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"/>
+            <path d="M15 17l5-5-5-5"/><path d="M20 12H9"/></svg>
+          Log out
+        </button>
+        <div class="perr" id="perr" hidden></div>
+      </div>
     </div>
     <button class="themetog" id="themetog" type="button"></button>
   </div>
@@ -915,6 +966,7 @@ document.addEventListener("keydown", e => {
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
   if(e.key === "Escape"){
     if(sheet.classList.contains("on")) closeSheet();
+    else if(pmenuEl.classList.contains("open")){ closeProfile(); avatarEl.focus(); }
     else closeFields();
   }
   if(e.key === "/" && !typing){ e.preventDefault(); $("#q").focus(); }
@@ -1716,6 +1768,66 @@ window.addEventListener("hashchange", () => { if(!routing) applyRoute(); });
 /* ---------- boot ---------- */
 $("#brandsub").textContent =
   `${nf(SONGS.length)} liked · ${nf(ARTISTS.length)} artists · ${nf(ALBUMS.length)} albums`;
+
+/* ---------- profile ---------- */
+/* Declared unconditionally: the Escape handler above closes this menu, and it
+   is wired long before the check below decides whether there is an account. */
+const profileEl = $("#profile"), avatarEl = $("#avatar"), pmenuEl = $("#pmenu");
+function closeProfile(){
+  if(!pmenuEl.classList.contains("open")) return;
+  pmenuEl.classList.remove("open");
+  avatarEl.setAttribute("aria-expanded", "false");
+}
+
+/* No display name is stored, only the address, so the monogram comes from its
+   local part: 'alon.emanuel' -> AE, 'alonemanuel95' -> AL. */
+function initials(email){
+  const local = (email.split("@")[0] || "").replace(/[0-9]+/g, "");
+  const parts = local.split(/[._+-]+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[1][0]
+                           : (parts[0] || email).slice(0, 2)).toUpperCase();
+}
+
+/* The Worker attaches the signed-in address to the library it serves, so its
+   presence is what tells us there is a session to end. The offline copy is
+   built without one and never shows the control. */
+if(DATA.email){
+  const out = $("#logout"), err = $("#perr");
+  avatarEl.textContent = initials(DATA.email);
+  avatarEl.title = DATA.email;
+  avatarEl.setAttribute("aria-label", "Account: " + DATA.email);
+  $("#pmail").textContent = DATA.email;
+  profileEl.hidden = false;
+
+  avatarEl.onclick = () => {
+    const open = !pmenuEl.classList.contains("open");
+    pmenuEl.classList.toggle("open", open);
+    avatarEl.setAttribute("aria-expanded", open ? "true" : "false");
+    if(open) out.focus();
+  };
+  // Capture, because the page's own click handler stops propagation on rows.
+  document.addEventListener("click", e => {
+    if(!e.target.closest("#profile")) closeProfile();
+  }, true);
+  mainEl.addEventListener("scroll", closeProfile, {passive:true});
+
+  out.onclick = async () => {
+    out.disabled = true;
+    err.hidden = true;
+    try{
+      const r = await fetch("/api/logout", {method:"POST"});
+      if(!r.ok) throw new Error(r.status);
+      // The cookie is HttpOnly, so only the server can clear it — reload and
+      // let the Worker hand back the sign-in page.
+      location.reload();
+    }catch{
+      // Say so rather than leaving a dead item: the session is still live.
+      out.disabled = false;
+      err.textContent = "Log out failed — try again";
+      err.hidden = false;
+    }
+  };
+}
 
 apiStatus();
 if(location.hash.length > 1){ applyRoute(); }

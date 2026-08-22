@@ -304,7 +304,9 @@ export default {
                   { 'set-cookie': cookie });
     }
 
-    if (url.pathname === '/api/logout') {
+    // POST only: a cross-site GET (an <img>, a prefetch) must not be able to
+    // sign someone out.
+    if (url.pathname === '/api/logout' && request.method === 'POST') {
       return json({ ok: true }, 200, {
         'set-cookie': `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`,
       });
