@@ -130,7 +130,7 @@ type AlbumTuple = [
 ];
 type SongTuple = [
   title: string, leadArtistIdx: number, albumIdx: number, seconds: number,
-  videoId: string, account: number, inYtMusic: number, allArtistIdxs: number[],
+  videoId: string, allArtistIdxs: number[],
 ];
 
 interface Library {
@@ -229,23 +229,23 @@ async function libraryFor(db: D1Database, email: string): Promise<Library | null
 
   const songs: SongTuple[] = itemsQ.results.map((r) => {
     const id = JSON.parse(r.identifiers || '{}') as {
-      seconds?: number; videoId?: string; account?: number; inYtMusic?: boolean;
+      seconds?: number; videoId?: string;
     };
     const ais = artistsOf.get(r.id) || [];
     const ali = r.music_key != null ? (albumIx.get(r.music_key) ?? -1) : -1;
     return [r.title, ais.length ? ais[0] : -1, ali, id.seconds || 0,
-            id.videoId || '', id.account ?? 2, id.inYtMusic ? 1 : 0, ais];
+            id.videoId || '', ais];
   });
 
   // Counts and tracklists, matching what the build used to precompute.
   songs.forEach((s) => {
-    for (const a of s[7]) artists[a][3]++;
+    for (const a of s[5]) artists[a][3]++;
     if (s[2] >= 0) albums[s[2]][4]++;
   });
   const artAlbums = new Map<number, Set<number>>();
   songs.forEach((s) => {
     if (s[2] < 0) return;
-    for (const a of s[7]) {
+    for (const a of s[5]) {
       let set = artAlbums.get(a);
       if (!set) artAlbums.set(a, set = new Set());
       set.add(s[2]);

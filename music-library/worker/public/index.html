@@ -158,7 +158,6 @@
      the buttons it names. On a phone the whole set moves into a panel. */
   .fields{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;flex:1;min-width:0}
   .fgrp{display:flex;align-items:center;gap:8px}
-  .lbl.mob{display:none}
   .fbtn,.fdone{display:none}
   .fbtn{
     align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
@@ -281,7 +280,6 @@
     .fields.open{display:flex}
     .fgrp{display:block}
     .fgrp .lbl{display:block;margin-bottom:8px}
-    .lbl.mob{display:block}
     /* Five sort options never fit one phone row, and a segmented control loses
        its shared border the moment it wraps — so here they are separate chips. */
     .fields .seg{
@@ -542,27 +540,12 @@
         <span class="lbl">Sort</span>
         <div class="seg" id="sort"></div>
       </div>
-      <div class="fgrp">
-        <span class="lbl">Account</span>
-        <div class="seg" id="acct">
-          <button data-a="all" class="on">All</button>
-          <button data-a="0">Personal</button>
-          <button data-a="1">Work</button>
-        </div>
-      </div>
       <div class="fgrp" id="relgrp">
         <span class="lbl">Show</span>
         <div class="seg" id="rel">
           <button data-r="albums" class="on">Albums</button>
           <button data-r="eps">Singles &amp; EPs</button>
           <button data-r="all">All</button>
-        </div>
-      </div>
-      <div class="fgrp">
-        <span class="lbl mob">Library</span>
-        <div class="seg" id="ytm">
-          <button data-y="all" class="on">Everything</button>
-          <button data-y="1">Music only</button>
         </div>
       </div>
       <button class="fdone" id="fdone" type="button">Done</button>
@@ -622,9 +605,9 @@ let DATA = /*__DATA__*/null;
 const SONGS = DATA.songs, ARTISTS = DATA.artists, ALBUMS = DATA.albums, KINDS = DATA.kinds;
 const ORIGINAL_SONGS = SONGS.length;   // rows appended later were never in the export
 // song tuple: [0]title [1]leadArtistIdx [2]albumIdx [3]seconds [4]videoId
-//              [5]account [6]inYtMusic [7]allArtistIdxs
-//   [7] is every act named in the credit — 'Vibe Ish, Roisha' is two artists,
-//   each independently clickable. [1] is just [7][0], kept for album filing.
+//              [5]allArtistIdxs
+//   [5] is every act named in the credit — 'Vibe Ish, Roisha' is two artists,
+//   each independently clickable. [1] is just [5][0], kept for album filing.
 // artist    : [0]displayName [1]pic [2]picSm [3]nTracks [4]nAlbums [5]latinName [6]slug
 // album     : [0]name [1]artistIdx [2]cover [3]coverSm [4]nTracks [5]releaseType [7]slug
 //              [6]tracklist | null — [[title, seconds, likedSongIdx | -1], …]
@@ -672,7 +655,7 @@ const ICON = {
 /* A credit lists every act, each its own link — no hover or long-press needed
    to reach the second name. */
 function credit(song, cls){
-  const ids = song[7] && song[7].length ? song[7] : (song[1] >= 0 ? [song[1]] : []);
+  const ids = song[5] && song[5].length ? song[5] : (song[1] >= 0 ? [song[1]] : []);
   if(!ids.length) return `<span style="color:var(--dimmer)">Unknown artist</span>`;
   return ids.map(i => `<b class="${cls||''}" data-ar="${i}" dir="auto">${esc(ARTISTS[i][0])}</b>`)
             .join('<span class="sep">, </span>');
@@ -715,7 +698,7 @@ function fold(s){
 /* ---------- precomputed search keys ---------- */
 const S_KEY = SONGS.map(s =>
   fold(s[0] + " "
-     + (s[7]||[]).map(i => ARTISTS[i][0] + " " + (ARTISTS[i][5]||"")).join(" ")
+     + (s[5]||[]).map(i => ARTISTS[i][0] + " " + (ARTISTS[i][5]||"")).join(" ")
      + " " + (s[2]>=0?ALBUMS[s[2]][0]:"")));
 const AL_KEY = ALBUMS.map(a => fold(a[0] + " " + ARTISTS[a[1]][0] + " " + (ARTISTS[a[1]][5]||"")));
 // Hebrew artists are searchable by their Latin name too ("duda" finds דודא).
@@ -731,7 +714,7 @@ const AR_SORT = ARTISTS.map(a => sortKey(a[0]));
 const END = "￿";   // sorts unknown artist/album last
 
 /* ---------- state ---------- */
-const st = { view:"songs", q:"", acct:"all", ytm:"all", rel:"albums",
+const st = { view:"songs", q:"", rel:"albums",
              sort:{songs:"title", albums:"tracks", artists:"tracks"} };
 
 const SORTS = {
@@ -741,16 +724,6 @@ const SORTS = {
 };
 
 /* ---------- filtering ---------- */
-function songPass(i){
-  const s = SONGS[i];
-  if(st.acct !== "all"){
-    const a = +st.acct;                     // "both" (2) counts as being in each account
-    if(!(s[5] === a || s[5] === 2)) return false;
-  }
-  if(st.ytm === "1" && !s[6]) return false;
-  return true;
-}
-
 let songIdx = [], albumIdx = [], artistIdx = [], albTracks = null, artTracks = null;
 
 function recompute(){
@@ -758,10 +731,9 @@ function recompute(){
   const terms = q ? q.split(/\s+/) : [];
   const match = key => terms.every(t => key.includes(t));
 
-  // Songs surviving account/ytm filters — the basis for album/artist counts too,
-  // so the grids stay consistent with the filter bar.
-  const base = [];
-  for(let i=0;i<SONGS.length;i++) if(songPass(i)) base.push(i);
+  // Every song is in scope — the album and artist counts below are derived
+  // from the same list, so the grids stay consistent with the song list.
+  const base = SONGS.map((_, i) => i);
 
   songIdx = terms.length ? base.filter(i => match(S_KEY[i])) : base.slice();
 
@@ -770,7 +742,7 @@ function recompute(){
   for(const i of base){
     const s = SONGS[i];
     if(s[2] >= 0) albTracks.set(s[2], (albTracks.get(s[2])||0)+1);
-    for(const a of (s[7]||[])) artTracks.set(a, (artTracks.get(a)||0)+1);
+    for(const a of (s[5]||[])) artTracks.set(a, (artTracks.get(a)||0)+1);
   }
   for(const [ai] of albTracks){
     const ar = ALBUMS[ai][1];
@@ -938,8 +910,7 @@ function paintFilterBtn(){
   const cur = st.sort[st.view];
   const named = SORTS[st.view].find(([k]) => k === cur);
   $("#fbtnlbl").textContent = "Sort: " + (named ? named[1] : cur);
-  const n = (st.acct !== "all") + (st.ytm !== "all")
-          + (st.view === "albums" && st.rel !== "albums");
+  const n = +(st.view === "albums" && st.rel !== "albums");
   const dot = $("#fdot");
   dot.textContent = n || "";
   dot.hidden = !n;
@@ -1013,7 +984,7 @@ function albumCredit(ai){
   const ids = [];
   for(const s of SONGS){
     if(s[2] !== ai) continue;
-    for(const x of (s[7] || [])) if(!ids.includes(x)) ids.push(x);
+    for(const x of (s[5] || [])) if(!ids.includes(x)) ids.push(x);
   }
   if(!ids.length) ids.push(ALBUMS[ai][1]);
   return ids.map(i => `<b data-ar="${i}" dir="auto">${esc(ARTISTS[i][0])}</b>`)
@@ -1025,7 +996,7 @@ function openAlbum(i){
   // Deliberately ignores the text query — an album you clicked into should show
   // its whole tracklist, not just the tracks whose titles matched the search.
   const use = [];
-  for(let x=0;x<SONGS.length;x++) if(SONGS[x][2]===i && songPass(x)) use.push(x);
+  for(let x=0;x<SONGS.length;x++) if(SONGS[x][2]===i) use.push(x);
   const secs = use.reduce((t,x)=>t+SONGS[x][3],0);
   const src = img(a[2],500);
   const tl = a[6];
@@ -1051,7 +1022,7 @@ function openArtist(i){
   const a = ARTISTS[i];
   const mine = [];
   for(let x=0;x<SONGS.length;x++)
-    if(songPass(x) && (SONGS[x][7]||[]).includes(i)) mine.push(x);
+    if((SONGS[x][5]||[]).includes(i)) mine.push(x);
   const albs = [...new Set(mine.map(x=>SONGS[x][2]).filter(x=>x>=0))]
                  .sort((p,q)=>coll.compare(ALBUMS[p][0],ALBUMS[q][0]));
   const loose = mine.filter(x => SONGS[x][2] < 0);
@@ -1150,20 +1121,10 @@ $("#sort").onclick = e => {
   st.sort[st.view] = b.dataset.s;
   sortAll(); mainEl.scrollTop = 0; lastWin = [-1,-1]; render(); pushRoute();
 };
-$("#acct").onclick = e => {
-  const b = e.target.closest("button"); if(!b) return;
-  $("#acct").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
-  st.acct = b.dataset.a; refresh(false); pushRoute();
-};
 $("#rel").onclick = e => {
   const b = e.target.closest("button"); if(!b) return;
   $("#rel").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
   st.rel = b.dataset.r; refresh(false); pushRoute();
-};
-$("#ytm").onclick = e => {
-  const b = e.target.closest("button"); if(!b) return;
-  $("#ytm").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
-  st.ytm = b.dataset.y; refresh(false); pushRoute();
 };
 
 /* ---------- collapsed controls (phones) ---------- */
@@ -1699,8 +1660,6 @@ function currentRoute(){
   const p = new URLSearchParams();
   p.set("view", st.view);
   if(st.q) p.set("q", st.q);
-  if(st.acct !== "all") p.set("acct", st.acct);
-  if(st.ytm !== "all") p.set("ytm", st.ytm);
   if(st.view === "albums" && st.rel !== "albums") p.set("rel", st.rel);
   const so = st.sort[st.view];
   if(so !== {songs:"title", albums:"tracks", artists:"tracks"}[st.view]) p.set("sort", so);
@@ -1736,8 +1695,6 @@ function applyRoute(){
   const v = p.get("view");
   if(v === "songs" || v === "albums" || v === "artists") st.view = v;
   st.q = p.get("q") || "";
-  st.acct = p.get("acct") || "all";
-  st.ytm = p.get("ytm") || "all";
   st.rel = p.get("rel") || "albums";
   const so = p.get("sort");
   if(so) st.sort[st.view] = so;
@@ -1745,8 +1702,6 @@ function applyRoute(){
   $("#q").value = st.q;
   $("#searchwrap").classList.toggle("has", !!st.q);
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.v === st.view));
-  $("#acct").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.a === st.acct));
-  $("#ytm").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.y === st.ytm));
   $("#rel").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.r === st.rel));
 
   recompute(); render();
