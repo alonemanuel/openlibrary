@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "npx wrangler dev --config worker/wrangler.toml",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260101.0",

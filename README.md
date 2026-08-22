@@ -41,6 +41,7 @@ scripts/        dev helpers
 npm install
 npm run lint          # ESLint over the Worker
 npm run typecheck     # tsc, Worker only
+npm test              # unit tests, no network required
 npm run dev           # wrangler dev, against the live D1
 ```
 
@@ -96,3 +97,25 @@ normalised `name:` fallback for YouTube-only uploads that were never released.
 
 Migrations are forward-only and live in `migrations/`. Artwork is mirrored into
 R2 (`music-art`), content-addressed and served with a one-year cache header.
+
+## Exporting your library
+
+Every view has an **Export CSV** button in the header. It downloads exactly what
+you are looking at — the current tab, the current search, in the order shown —
+so the songs list, one artist's discography and "everything" are all a click
+apart.
+
+| Tab | Columns |
+| --- | --- |
+| Songs | `title, artists, album, album_artist, duration, seconds, youtube_video_id` |
+| Albums | `album, artist, liked_tracks, total_tracks, release_type` |
+| Artists | `artist, latin_name, liked_tracks, albums` |
+
+Files are named for what is in them — `songs.csv`, `albums-bonobo.csv` — and are
+UTF-8 with a BOM and CRLF line endings, so Hebrew titles survive a double-click
+into Excel. Values starting with `=`, `+`, `-` or `@` are prefixed with an
+apostrophe so a spreadsheet cannot execute a song title as a formula.
+
+The export is built in the browser from the library the page already holds, so
+it costs no extra request, needs no new permission, and works identically in the
+offline `library.html` that `pipeline/build.py` generates.
