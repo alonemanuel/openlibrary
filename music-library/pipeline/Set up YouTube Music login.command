@@ -31,7 +31,16 @@ Nothing is uploaded. It is written only to
 ────────────────────────────────────────────────────────────────────
 TXT
 
-"$PY" -m ytmusicapi browser --file "$HOME/AlonPersonal/musiclib/browser.json"
+# ytmusicapi ships its setup as a console script, not a runnable module:
+# `python -m ytmusicapi` fails with "cannot be directly executed". Prefer the
+# script, and fall back to the library call if the venv predates it.
+CLI="$HOME/AlonPersonal/musiclib/venv/bin/ytmusicapi"
+if [ -x "$CLI" ]; then
+  "$CLI" browser --file "$HOME/AlonPersonal/musiclib/browser.json"
+else
+  "$PY" -c 'import sys, ytmusicapi; ytmusicapi.setup(filepath=sys.argv[1], headers_raw=sys.stdin.read())' \
+    "$HOME/AlonPersonal/musiclib/browser.json"
+fi
 chmod 600 "$HOME/AlonPersonal/musiclib/browser.json"
 
 echo
