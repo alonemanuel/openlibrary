@@ -1854,26 +1854,63 @@ function csvCell(v){
 const csv = rows => "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 
 function songsCsv(){
-  const rows = [["title", "artist_ids", "album_id", "length", "video_id", "youtube_url"]];
+  const rows = [["id", "title", "artist_ids", "album_id", "length", "youtube_url"]];
   for(const s of SONGS.slice(0, ORIGINAL_SONGS)){
     const ids = s[5] && s[5].length ? s[5] : (s[1] >= 0 ? [s[1]] : []);
     const al = s[2] >= 0 ? ALBUMS[s[2]] : null;
-    rows.push([s[0], ids.map(i => ARTISTS[i][6]).join("; "), al ? al[7] : "",
-               mmss(s[3]), s[4] || "", s[4] ? YTM + s[4] : ""]);
+    rows.push([s[4] || "", s[0], ids.map(i => ARTISTS[i][6]).join("; "),
+               al ? al[7] : "", mmss(s[3]), s[4] ? YTM + s[4] : ""]);
   }
   return csv(rows);
 }
 
-function artistsCsv(){
-  const rows = [["id", "name", "latin_name", "n_liked_tracks", "n_albums"]];
-  for(const a of ARTISTS) rows.push([a[6], a[0], a[5] || "", a[3], a[4]]);
+/* Each table lists what it holds, so the join can be read in either
+   direction — an artist's songs without grepping songs.csv for its slug.
+   A song is identified by its YouTube Music id; the rare song without one
+   is exported but cannot be pointed at, so it is left out of these lists. */
+function crossRefs(){
+  const songsOf = new Map();    // artist index -> song ids
+  const albumsOf = new Map();   // artist index -> album indexes
+  const tracksOf = new Map();   // album index  -> song ids
+  const push = (map, key, v) => {
+    let list = map.get(key);
+    if(!list) map.set(key, list = []);
+    list.push(v);
+  };
+
+  for(const s of SONGS.slice(0, ORIGINAL_SONGS)){
+    const id = s[4];
+    if(!id) continue;
+    const ids = s[5] && s[5].length ? s[5] : (s[1] >= 0 ? [s[1]] : []);
+    for(const a of ids){
+      push(songsOf, a, id);
+      if(s[2] >= 0){
+        let seen = albumsOf.get(a);
+        if(!seen) albumsOf.set(a, seen = new Set());
+        seen.add(s[2]);
+      }
+    }
+    if(s[2] >= 0) push(tracksOf, s[2], id);
+  }
+  return {songsOf, albumsOf, tracksOf};
+}
+
+function artistsCsv(refs){
+  const rows = [["id", "name", "latin_name", "album_ids", "song_ids"]];
+  ARTISTS.forEach((a, i) => rows.push([
+    a[6], a[0], a[5] || "",
+    [...(refs.albumsOf.get(i) || [])].map(j => ALBUMS[j][7]).join("; "),
+    (refs.songsOf.get(i) || []).join("; "),
+  ]));
   return csv(rows);
 }
 
-function albumsCsv(){
-  const rows = [["id", "name", "artist_id", "release", "n_liked_tracks"]];
-  for(const a of ALBUMS)
-    rows.push([a[7], a[0], a[1] >= 0 ? ARTISTS[a[1]][6] : "", RELNAME[a[5]], a[4]]);
+function albumsCsv(refs){
+  const rows = [["id", "name", "artist_id", "release", "song_ids"]];
+  ALBUMS.forEach((a, i) => rows.push([
+    a[7], a[0], a[1] >= 0 ? ARTISTS[a[1]][6] : "", RELNAME[a[5]],
+    (refs.tracksOf.get(i) || []).join("; "),
+  ]));
   return csv(rows);
 }
 
@@ -1949,10 +1986,11 @@ function zip(files){
 
 $("#csv").onclick = () => {
   const stamp = new Date().toISOString().slice(0, 10);
+  const refs = crossRefs();
   const url = URL.createObjectURL(zip([
     {name: "songs.csv",   text: songsCsv()},
-    {name: "artists.csv", text: artistsCsv()},
-    {name: "albums.csv",  text: albumsCsv()},
+    {name: "artists.csv", text: artistsCsv(refs)},
+    {name: "albums.csv",  text: albumsCsv(refs)},
   ]));
   const a = document.createElement("a");
   a.href = url;
