@@ -170,8 +170,12 @@ def main():
     items = []
     for n, s in enumerate(S):
         credit = ", ".join(A[x][0] for x in (s[5] or []) if x >= 0)
+        # videoId is one id, never the ';'-joined list the CSV holds: the
+        # player, the like button and the row's identity all key off it.
         ident = {"videoId": s[4], "seconds": s[3]}
-        at = earliest(s[4], dates)
+        if len(s) > 8 and s[8]:
+            ident["altIds"] = s[8]
+        at = earliest(";".join([s[4]] + (s[8] if len(s) > 8 else [])), dates)
         items.append([
             f"i_{uid}_{n}", uid, "music", s[0], credit, None, "liked", None,
             "[]", "", json.dumps(ident, ensure_ascii=False),

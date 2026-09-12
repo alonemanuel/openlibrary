@@ -131,6 +131,7 @@ type AlbumTuple = [
 type SongTuple = [
   title: string, leadArtistIdx: number, albumIdx: number, seconds: number,
   videoId: string, allArtistIdxs: number[], likedAt: number, estimated: number,
+  altIds: string[],
 ];
 
 interface Library {
@@ -232,8 +233,13 @@ async function libraryFor(db: D1Database, email: string): Promise<Library | null
 
   const songs: SongTuple[] = itemsQ.results.map((r) => {
     const id = JSON.parse(r.identifiers || '{}') as {
-      seconds?: number; videoId?: string;
+      seconds?: number; videoId?: string; altIds?: string[];
     };
+    // videoId is one id. A row that still holds the ';'-joined list from an
+    // older import is split here rather than handed to the player, which
+    // rejects it outright — that made a third of the library unplayable.
+    const [vid, ...joined] = (id.videoId || '').split(';');
+    const alts = (id.altIds ?? joined).filter(Boolean);
     const ais = artistsOf.get(r.id) || [];
     const ali = r.music_key != null ? (albumIx.get(r.music_key) ?? -1) : -1;
     // Epoch seconds, not the ISO text: the page compares this far more often
@@ -245,7 +251,7 @@ async function libraryFor(db: D1Database, email: string): Promise<Library | null
     // so a guessed day is never read back later as a measured one.
     const est = added && r.liked_at_estimated ? 1 : 0;
     return [r.title, ais.length ? ais[0] : -1, ali, id.seconds || 0,
-            id.videoId || '', ais, added, est];
+            vid || '', ais, added, est, alts];
   });
 
   // Counts and tracklists, matching what the build used to precompute.
