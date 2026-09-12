@@ -233,6 +233,8 @@
   .row .alb{width:26%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     font-size:12.5px;color:var(--dim)}
   .row .alb:hover{color:var(--fg);text-decoration:underline}
+  .row .added{width:62px;flex:none;text-align:right;font-size:12px;color:var(--dimmer);
+    font-variant-numeric:tabular-nums}
   .row .d{width:48px;flex:none;text-align:right;font-size:12px;color:var(--dimmer);
     font-variant-numeric:tabular-nums}
   .row .yt{width:22px;flex:none;opacity:0;color:var(--dim);line-height:0;
@@ -241,7 +243,7 @@
   .row:hover .yt{opacity:.85}
   .row.playing .yt{opacity:1;color:var(--accent)}
   body:not(.can-search) .row.unliked .yt{display:none}
-  @media(max-width:820px){ .row .alb{display:none} }
+  @media(max-width:820px){ .row .alb,.row .added{display:none} }
 
   /* ---------- narrow screens ---------- */
   /* Four segmented controls stack four deep on a phone: the header was eating
@@ -280,7 +282,7 @@
     .fields.open{display:flex}
     .fgrp{display:block}
     .fgrp .lbl{display:block;margin-bottom:8px}
-    /* Five sort options never fit one phone row, and a segmented control loses
+    /* Six sort options never fit one phone row, and a segmented control loses
        its shared border the moment it wraps — so here they are separate chips. */
     .fields .seg{
       display:flex;flex-wrap:wrap;gap:6px;
@@ -625,7 +627,10 @@ let DATA = /*__DATA__*/null;
 const SONGS = DATA.songs, ARTISTS = DATA.artists, ALBUMS = DATA.albums, KINDS = DATA.kinds;
 const ORIGINAL_SONGS = SONGS.length;   // rows appended later were never in the export
 // song tuple: [0]title [1]leadArtistIdx [2]albumIdx [3]seconds [4]videoId
-//              [5]allArtistIdxs
+//              [5]allArtistIdxs [6]likedAt
+//   [6] is epoch seconds of when the song was added, 0 when unknown — which is
+//   most of them: Google keeps no per-like timestamp, so this is only filled
+//   where some other record pins the moment down. It both orders and prints.
 //   [5] is every act named in the credit — 'Vibe Ish, Roisha' is two artists,
 //   each independently clickable. [1] is just [5][0], kept for album filing.
 // artist    : [0]displayName [1]pic [2]picSm [3]nTracks [4]nAlbums [5]latinName [6]slug
@@ -696,6 +701,15 @@ function img(packed, size){            // "0:hash" -> full Deezer CDN url
   if(i < 0 || !/^\d+$/.test(packed.slice(0,i))) return packed;   // raw url passthrough
   return `https://cdn-images.dzcdn.net/images/${KINDS[+packed.slice(0,i)]}/${packed.slice(i+1)}/${size}x${size}-000000-80-0-0.jpg`;
 }
+/* "Mar 2024" — month precision on purpose. The date stands in for a like and
+   is right to within days at best, so a to-the-day rendering would claim more
+   than it knows. */
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function added(t){
+  if(!t) return "";
+  const d = new Date(t*1000);
+  return MONTHS[d.getMonth()] + " " + d.getFullYear();
+}
 function mmss(s){
   if(!s) return "";
   const h = s/3600|0, m = (s%3600)/60|0, x = s%60;
@@ -732,6 +746,8 @@ const AR_KEY = ARTISTS.map(a => fold(a[0] + " " + (a[5]||"")));
 const LEAD = /^[^\p{L}\p{N}]+/u;
 const sortKey = s => { const t = (s||"").replace(LEAD,""); return t || (s||""); };
 const S_SORT  = SONGS.map(s => sortKey(s[0]));
+// A blank column for every row helps nobody; most libraries have no dates.
+const HAS_DATES = SONGS.some(s => s[6]);
 const AL_SORT = ALBUMS.map(a => sortKey(a[0]));
 const AR_SORT = ARTISTS.map(a => sortKey(a[0]));
 const END = "￿";   // sorts unknown artist/album last
@@ -741,7 +757,8 @@ const st = { view:"songs", q:"", rel:"albums",
              sort:{songs:"title", albums:"tracks", artists:"tracks"} };
 
 const SORTS = {
-  songs:  [["title","Title"],["artist","Artist"],["album","Album"],["dur","Length"],["orig","Original"]],
+  songs:  [["title","Title"],["artist","Artist"],["album","Album"],["dur","Length"],
+           ["added","Recently added"],["orig","Original"]],
   albums: [["tracks","Liked tracks"],["title","Title"],["artist","Artist"]],
   artists:[["tracks","Liked tracks"],["albums","Albums"],["name","Name"]],
 };
@@ -800,6 +817,8 @@ function sortAll(){
   else if(so.songs === "artist") songIdx.sort((a,b)=>coll.compare(sAr(a),sAr(b)) || coll.compare(S_SORT[a],S_SORT[b]));
   else if(so.songs === "album")  songIdx.sort((a,b)=>coll.compare(sAl(a),sAl(b)) || coll.compare(S_SORT[a],S_SORT[b]));
   else if(so.songs === "dur")    songIdx.sort((a,b)=>SONGS[b][3]-SONGS[a][3] || coll.compare(S_SORT[a],S_SORT[b]));
+  // Newest first. Undated songs are 0, so they fall to the end on their own.
+  else if(so.songs === "added")  songIdx.sort((a,b)=>SONGS[b][6]-SONGS[a][6] || coll.compare(S_SORT[a],S_SORT[b]));
   else                           songIdx.sort((a,b)=>a-b);
 
   if(so.albums === "tracks")      albumIdx.sort((a,b)=>(albTracks.get(b)-albTracks.get(a)) || coll.compare(AL_SORT[a],AL_SORT[b]));
@@ -841,6 +860,7 @@ function renderSongs(force){
       +  `<span class="alb" dir="auto"${al?` data-al="${s[2]}"`:''}>${al?esc(al[0]):''}</span>`
       +  `<span class="lk${isLiked(i)?' on':''}" data-lk="${esc(s[4])}">`
       +    (isLiked(i) ? ICON.likeOn : ICON.like) + `</span>`
+      +  (HAS_DATES ? `<span class="added">${added(s[6])}</span>` : "")
       +  `<span class="d">${mmss(s[3])}</span>`
       +  `<span class="yt">${ICON.rowPlay}</span>`
       +  `</div>`;
@@ -1612,7 +1632,10 @@ async function playUnliked(row){
   if(!vid){ note("Couldn't find “" + tr[0] + "” on YouTube Music"); return; }
 
   // Give it a real row so the transport, like button and queue all work.
-  SONGS.push([tr[0], al[1], ai, tr[1], vid, 2, 1, [al[1]]]);
+  // Never liked, so likedAt is 0 and it files last under date order. The
+  // credit list is [5]: this row used to carry two extra fields before them,
+  // and pushing the old shape left [5] a number that recompute() choked on.
+  SONGS.push([tr[0], al[1], ai, tr[1], vid, [al[1]], 0]);
   const si = SONGS.length - 1;
   S_KEY.push(fold(tr[0] + " " + artist + " " + al[0]));
   S_SORT.push(sortKey(tr[0]));

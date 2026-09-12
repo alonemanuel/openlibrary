@@ -18,6 +18,9 @@ DATA = os.path.dirname(HERE)                 # data lives one level above the sc
 CSV = os.environ.get("MUSIC_CSV", os.path.join(DATA, "liked_music_deduped.csv"))
 CACHE = os.path.join(DATA, "art_cache.json")
 NAMES = os.path.join(HERE, "names.json")     # curated Hebrew/Arabic -> English
+# When each song was added, recovered from a Google Takeout by liked_at.py.
+# Optional: without it every song is dated 0 and the date order is inert.
+LIKED_AT = os.environ.get("MUSIC_LIKED_AT", os.path.join(DATA, "liked_at.json"))
 # The deployed Worker shell is the single source of truth for the page. The
 # offline build injects DATA into a copy of it; the Worker injects a signed-in
 # user's library into the same file at request time. Keep it data-free on disk
@@ -54,6 +57,29 @@ def pack_url(url):
         return url                       # iTunes URLs stay verbatim
     kind, h = m.group(1), m.group(2)
     return f"{KINDS.index(kind)}:{h}" if kind in KINDS else url
+
+
+def load_dates(path):
+    """liked_at.py's output. Absent is normal -- the whole feature is optional,
+    and a library with no dates simply never offers a meaningful date order."""
+    if not os.path.exists(path):
+        return {}
+    return json.load(open(path, encoding="utf-8")).get("dates") or {}
+
+
+def liked_epoch(video_ids, dates):
+    """When this song was added, as epoch seconds, 0 when unknown -- which
+    sorts last under newest-first without a special case. Epoch rather than the
+    ISO text because the page compares it far more often than it prints it, and
+    ships it inline once per song on every load.
+
+    One library row can carry several uploads of the same song; the date that
+    matters is the earliest, when the song first arrived."""
+    vals = [dates[v] for v in (video_ids or "").split(";") if v and v in dates]
+    if not vals:
+        return 0
+    return int(datetime.datetime.fromisoformat(
+        min(vals).replace("Z", "+00:00")).timestamp())
 
 
 def norm(s):
@@ -125,6 +151,7 @@ def secs(d):
 def main():
     rows = list(csv.DictReader(open(CSV, encoding="utf-8-sig")))
     cache = json.load(open(CACHE, encoding="utf-8"))
+    dates = load_dates(LIKED_AT)
     ac = cache.get("artists", {})
     alc = cache.get("albums2", {}) or {}
     legacy = cache.get("albums", {})
@@ -299,7 +326,8 @@ def main():
                 alb_ckey.append(ckey)
             li = album_ix[k]
 
-        songs.append([title, ai, li, secs(dur), vid, ais])
+        songs.append([title, ai, li, secs(dur), vid, ais,
+                      liked_epoch(vid, dates)])
 
     alb_tracks = collections.Counter(s[2] for s in songs if s[2] >= 0)
     art_tracks = collections.Counter(a for s in songs for a in s[5])
@@ -393,7 +421,9 @@ def main():
 
     tc = collections.Counter(a[5] for a in albums)
     names = {0: "album", 1: "single", 2: "EP", 3: "compilation", 4: "unknown"}
-    print(f"songs   : {len(songs)}  ({n_clean} titles tidied)")
+    n_dated = sum(1 for s_ in songs if s_[6])
+    print(f"songs   : {len(songs)}  ({n_clean} titles tidied, "
+          f"{n_dated} dated)")
     print(f"credits : {n_split} split into multiple artists")
     print(f"artists : {len(artists)}  ({sum(1 for a in artists if a[1])} photos, "
           f"{sum(1 for a in artists if a[5])} with a stored Latin name, "

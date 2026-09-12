@@ -21,6 +21,7 @@ This folder is only the offline build pipeline; the deployed site lives in
 | `fetch_tracks.py` | Official tracklists, so album sheets can grey out unliked tracks. Writes `tracks`. |
 | `match.py` | Pairs liked songs to official tracks (exact → feature-stripped → fuzzy). |
 | `clean.py` | Title tidying + Hebrew/Latin name splitting. Run it directly to see its test cases. |
+| `liked_at.py` | Recovers when each song was added, from a Google Takeout. Writes `../liked_at.json`. Optional. |
 | `build.py` | Merges CSV + cache into `../library.html`. |
 | `../worker/public/index.html` | The page — single source of truth. `build.py` injects data where `/*__DATA__*/null` appears; the Cloudflare Worker injects a signed-in user's library at request time. The file on disk must keep the placeholder intact (CI enforces this on deploy). |
 | `../art_cache.json` | Cached artwork URLs. Only URLs are stored — no images are downloaded. |
@@ -28,6 +29,7 @@ This folder is only the offline build pipeline; the deployed site lives in
 ## Rebuild after re-exporting your likes
 
 ```bash
+python3 liked_at.py ~/Downloads/takeout-*.zip   # optional: added-on dates
 python3 fetch_art.py     # artist photos
 python3 repair.py        # drop loose artist matches
 python3 fetch_art2.py    # album covers + release types
@@ -40,8 +42,72 @@ python3 build.py         # regenerates ../library.html
 
 Every pass is resumable — re-running only fetches what isn't cached.
 
-Standard library only — nothing to install. Don't create a venv in Google Drive;
-the sync client chokes on it.
+## Sorting by when you added something
+
+The CSV has no dates, and neither does Google. There is no per-like timestamp
+to retrieve: Takeout has no "Liked Music" export, likes made in YouTube Music
+never reach the "Liked videos" playlist, and the YouTube Music API offers only
+`a_to_z`, `z_to_a` and `recently_added`.
+
+A position in that liked list is not an answer, and is deliberately not stored.
+It is not a fact about a song: unlike one thing and every position after it
+shifts, so a saved rank is wrong the moment the library changes, cannot be
+merged across two accounts, and cannot be compared between imports. Only an
+instant survives that. So `liked_at.py` collects instants, and songs no instant
+can be found for stay undated rather than being given a plausible one — they
+sort last and show a blank date.
+
+```bash
+python3 liked_at.py ~/Downloads/takeout-20260911.zip
+```
+
+Writes `../liked_at.json`, which `build.py` and `to_d1.py` pick up on their own.
+The page then offers a **Recently added** sort and shows the month beside each
+song's length.
+
+### Where the timestamps come from
+
+**Watch history** (the default). The first time each song was played, standing
+in for when it was liked. A different fact — you can play something for years
+before liking it — but for music found and liked in one sitting the two are
+within days, and it is usually the only real date left. Earliest play, never the
+latest, so a song replayed today keeps the date it arrived. Tick *history* in
+the export.
+
+Expect partial coverage. Watch history is a rolling window, not a lifetime: it
+dates the last year or two well and almost nothing before that. The script
+prints the share of the library it managed to date.
+
+**The playlist export** (`--dates playlists`). Each playlist entry carries the
+moment it was added. Real when they survive, which is rarely — two things
+routinely gut it, and the script warns rather than importing nonsense:
+
+* **Likes made in YouTube Music never enter "Liked videos".** They land in the
+  music library, which Takeout exports alphabetically with no timestamps at all.
+* **A bulk playlist rewrite restamps every entry.** Migrating likes between
+  accounts leaves thousands of entries seconds apart — real timestamps for an
+  event that has nothing to do with liking. If every date falls inside one day
+  the script says so and tells you not to import it.
+
+If it cannot tell which playlist holds your likes — the name is localised, or
+there are several candidates — it lists what it found and stops rather than
+dating the library from the wrong file. `--playlist <part of the filename>`
+settles it.
+
+### Backfilling a library already in D1
+
+A full re-import regenerates artwork and tracklists to change one column, which
+is wasteful and needs the whole cache on hand. `--sql` emits UPDATEs against the
+rows already there, needing only the CSV:
+
+```bash
+python3 liked_at.py ~/Downloads/takeout-*.zip --user alon --sql > /tmp/dates.sql
+wrangler d1 execute openlibrary --remote --file /tmp/dates.sql
+```
+
+Item ids are positional in the CSV, exactly as `to_d1.py` assigns them, so this
+lands on the same rows a re-import would have written — as long as the CSV has
+not changed since the import. If it has, re-import instead.
 
 ## How the messy cases are handled
 

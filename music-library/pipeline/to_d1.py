@@ -12,6 +12,7 @@ liked songs owned by one user.
 import argparse, datetime, hashlib, io, json, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+DATA = os.path.dirname(HERE)     # data lives one level above the scripts
 sys.path.insert(0, HERE)
 from slug import slug  # noqa: E402
 
@@ -27,6 +28,26 @@ def q(v):
     if isinstance(v, (int, float)):
         return str(v)
     return "'" + str(v).replace("'", "''") + "'"
+
+
+def user_id(handle):
+    """Deterministic from the handle, so a re-import and an out-of-band
+    backfill address the same rows."""
+    return "u_" + hashlib.sha1(handle.encode()).hexdigest()[:12]
+
+
+def load_dates(path):
+    """liked_at.py's output. Absent is normal -- the whole feature is optional."""
+    if not os.path.exists(path):
+        return {}
+    return json.load(io.open(path, encoding="utf-8")).get("dates") or {}
+
+
+def earliest(video_ids, dates):
+    """One library row can carry several uploads of the same song; the date
+    that matters is the earliest, when the song first arrived."""
+    vals = [dates[v] for v in (video_ids or "").split(";") if v and v in dates]
+    return min(vals) if vals else None
 
 
 def norm_key(*parts):
@@ -85,7 +106,7 @@ def main():
     # users.email and password_hash are NOT NULL. This row is an import
     # placeholder — the password hash is deliberately unusable, so the account
     # can only be claimed by setting a real credential through the app.
-    uid = "u_" + hashlib.sha1(a.user.encode()).hexdigest()[:12]
+    uid = user_id(a.user)
     out.append(
         "INSERT OR IGNORE INTO users "
         "(id, email, handle, display_name, password_hash, created_at, library_visibility) "
@@ -128,6 +149,14 @@ def main():
                             ["source_name", "english", "reviewed"]))
 
     # ---- per-user: the liked songs ----
+    # When each like happened, if liked_at.py has been run against a Takeout.
+    # Absent, every row stays NULL rather than falling back to the import time,
+    # which would date the whole library to one instant and sort as noise.
+    lpath = os.path.join(DATA, "liked_at.json")
+    dates = load_dates(lpath)
+    if not dates:
+        print(f"-- no {lpath}; liked_at will be NULL throughout", file=sys.stderr)
+
     # build.py already paired liked songs to official positions using the
     # tiered matcher; reuse that rather than re-deriving it at request time.
     pos_of = {}
@@ -140,18 +169,20 @@ def main():
     for n, s in enumerate(S):
         credit = ", ".join(A[x][0] for x in (s[5] or []) if x >= 0)
         ident = {"videoId": s[4], "seconds": s[3]}
+        at = earliest(s[4], dates)
         items.append([
             f"i_{uid}_{n}", uid, "music", s[0], credit, None, "liked", None,
             "[]", "", json.dumps(ident, ensure_ascii=False),
             None, "ytmusic", "private", NOW, NOW, None,
             alkey.get(s[2]) if s[2] is not None and s[2] >= 0 else None,
             pos_of.get(n),
+            at,
         ])
     out += list(batched(items, "items", [
         "id", "user_id", "media_type", "title", "creators", "year", "status",
         "rating", "tags", "notes", "identifiers", "cover_url", "source",
         "visibility", "created_at", "updated_at", "deleted_at", "music_key",
-        "track_pos"]))
+        "track_pos", "liked_at"]))
 
     links = []
     for n, s_ in enumerate(S):
@@ -176,9 +207,10 @@ def main():
 
 
     sys.stdout.write("\n".join(out) + "\n")
+    n_dated = sum(1 for it in items if it[-1])   # liked_at is last
     print(f"-- media_assets {len(assets)} · release_tracks {len(tracks)} · "
-          f"items {len(items)} · item_artists {len(links)} · album_artists {len(alinks)}",
-          file=sys.stderr)
+          f"items {len(items)} ({n_dated} dated) · item_artists {len(links)} · "
+          f"album_artists {len(alinks)}", file=sys.stderr)
 
 
 if __name__ == "__main__":
