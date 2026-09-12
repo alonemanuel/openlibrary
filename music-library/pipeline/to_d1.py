@@ -37,10 +37,12 @@ def user_id(handle):
 
 
 def load_dates(path):
-    """liked_at.py's output. Absent is normal -- the whole feature is optional."""
+    """liked_at.py's output, plus whether its dates were measured or inferred
+    from the liked order. Absent is normal -- the feature is optional."""
     if not os.path.exists(path):
-        return {}
-    return json.load(io.open(path, encoding="utf-8")).get("dates") or {}
+        return {}, False
+    st = json.load(io.open(path, encoding="utf-8"))
+    return (st.get("dates") or {}), bool(st.get("estimated"))
 
 
 def earliest(video_ids, dates):
@@ -153,7 +155,7 @@ def main():
     # Absent, every row stays NULL rather than falling back to the import time,
     # which would date the whole library to one instant and sort as noise.
     lpath = os.path.join(DATA, "liked_at.json")
-    dates = load_dates(lpath)
+    dates, est = load_dates(lpath)
     if not dates:
         print(f"-- no {lpath}; liked_at will be NULL throughout", file=sys.stderr)
 
@@ -177,12 +179,13 @@ def main():
             alkey.get(s[2]) if s[2] is not None and s[2] >= 0 else None,
             pos_of.get(n),
             at,
+            (1 if est else 0) if at else None,
         ])
     out += list(batched(items, "items", [
         "id", "user_id", "media_type", "title", "creators", "year", "status",
         "rating", "tags", "notes", "identifiers", "cover_url", "source",
         "visibility", "created_at", "updated_at", "deleted_at", "music_key",
-        "track_pos", "liked_at"]))
+        "track_pos", "liked_at", "liked_at_estimated"]))
 
     links = []
     for n, s_ in enumerate(S):
@@ -207,9 +210,10 @@ def main():
 
 
     sys.stdout.write("\n".join(out) + "\n")
-    n_dated = sum(1 for it in items if it[-1])   # liked_at is last
+    n_dated = sum(1 for it in items if it[-2])   # liked_at
     print(f"-- media_assets {len(assets)} · release_tracks {len(tracks)} · "
-          f"items {len(items)} ({n_dated} dated) · item_artists {len(links)} · "
+          f"items {len(items)} ({n_dated}{' inferred' if est else ' dated'}) · "
+          f"item_artists {len(links)} · "
           f"album_artists {len(alinks)}", file=sys.stderr)
 
 

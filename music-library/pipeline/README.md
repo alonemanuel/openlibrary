@@ -66,7 +66,31 @@ Writes `../liked_at.json`, which `build.py` and `to_d1.py` pick up on their own.
 The page then offers a **Recently added** sort and shows the month beside each
 song's length.
 
-### Where the timestamps come from
+### Dates from the liked-songs order (`--from-ytmusic`)
+
+```bash
+~/AlonPersonal/musiclib/venv/bin/python liked_at.py --from-ytmusic
+```
+
+YouTube Music will give up the *order* of your liked songs — index 0 is the
+most recent like, and a new like appears there — but no timestamp. This spaces
+the library evenly along that order, between `--span-from` and now.
+
+The ordering is real, so the library sorts correctly. **The individual days are
+not.** A song shown as 2024 may really be 2019, and the page prints these with
+a `~` so a guess is never read back later as a measurement. `--span-from`
+defaults to the oldest measured date already on file, which is the one honest
+lower bound available.
+
+Needs a session; see `ytm_login.py`.
+
+Interpolating between the measured dates instead was tried and abandoned: 99%
+of them land inside a single four-month window, because watch history only
+reaches back ~34 months and an old like's "first heard" is just whenever it was
+last replayed. Anchors that clustered cannot calibrate years, and the fitted
+correlation against the true order came out at −0.10.
+
+### Where the measured timestamps come from
 
 **Watch history** (the default). The first time each song was played, standing
 in for when it was liked. A different fact — you can play something for years

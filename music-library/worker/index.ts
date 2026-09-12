@@ -130,7 +130,7 @@ type AlbumTuple = [
 ];
 type SongTuple = [
   title: string, leadArtistIdx: number, albumIdx: number, seconds: number,
-  videoId: string, allArtistIdxs: number[], likedAt: number,
+  videoId: string, allArtistIdxs: number[], likedAt: number, estimated: number,
 ];
 
 interface Library {
@@ -160,6 +160,7 @@ interface ItemRow {
   music_key: string | null;
   track_pos: number | null;
   liked_at: string | null;
+  liked_at_estimated: number | null;
 }
 interface ItemArtistRow { item_id: number; music_key: string; position: number }
 interface AlbumArtistRow { album_key: string; artist_key: string; position: number }
@@ -178,7 +179,8 @@ async function libraryFor(db: D1Database, email: string): Promise<Library | null
                        latin_name, release_type, n_tracks FROM media_assets`).all<AssetRow>(),
     db.prepare(`SELECT music_key, title, seconds FROM release_tracks
                 ORDER BY music_key, position`).all<TrackRow>(),
-    db.prepare(`SELECT id, title, identifiers, music_key, track_pos, liked_at FROM items
+    db.prepare(`SELECT id, title, identifiers, music_key, track_pos, liked_at,
+                       liked_at_estimated FROM items
                 WHERE user_id = ? AND deleted_at IS NULL ORDER BY rowid`).bind(uid).all<ItemRow>(),
     db.prepare(`SELECT ia.item_id, ia.music_key, ia.position FROM item_artists ia
                 JOIN items i ON i.id = ia.item_id WHERE i.user_id = ?
@@ -239,8 +241,11 @@ async function libraryFor(db: D1Database, email: string): Promise<Library | null
     // load. 0 means undated — most songs, since Google keeps no per-like
     // timestamp — and sorts last under newest-first with no special case.
     const added = r.liked_at ? Math.floor(Date.parse(r.liked_at) / 1000) || 0 : 0;
+    // Inferred from the liked order rather than observed. The page marks these,
+    // so a guessed day is never read back later as a measured one.
+    const est = added && r.liked_at_estimated ? 1 : 0;
     return [r.title, ais.length ? ais[0] : -1, ali, id.seconds || 0,
-            id.videoId || '', ais, added];
+            id.videoId || '', ais, added, est];
   });
 
   // Counts and tracklists, matching what the build used to precompute.

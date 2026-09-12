@@ -627,10 +627,12 @@ let DATA = /*__DATA__*/null;
 const SONGS = DATA.songs, ARTISTS = DATA.artists, ALBUMS = DATA.albums, KINDS = DATA.kinds;
 const ORIGINAL_SONGS = SONGS.length;   // rows appended later were never in the export
 // song tuple: [0]title [1]leadArtistIdx [2]albumIdx [3]seconds [4]videoId
-//              [5]allArtistIdxs [6]likedAt
-//   [6] is epoch seconds of when the song was added, 0 when unknown — which is
-//   most of them: Google keeps no per-like timestamp, so this is only filled
-//   where some other record pins the moment down. It both orders and prints.
+//              [5]allArtistIdxs [6]likedAt [7]estimated
+//   [6] is epoch seconds of when the song was added, 0 when unknown. Google
+//   keeps no per-like timestamp, so most of these are inferred by spacing the
+//   library along YouTube Music's liked order — real ordering, guessed days.
+//   [7] marks those, and they print with a ~ so a guess is never read back as
+//   a measurement.
 //   [5] is every act named in the credit — 'Vibe Ish, Roisha' is two artists,
 //   each independently clickable. [1] is just [5][0], kept for album filing.
 // artist    : [0]displayName [1]pic [2]picSm [3]nTracks [4]nAlbums [5]latinName [6]slug
@@ -705,10 +707,10 @@ function img(packed, size){            // "0:hash" -> full Deezer CDN url
    is right to within days at best, so a to-the-day rendering would claim more
    than it knows. */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-function added(t){
+function added(t, est){
   if(!t) return "";
   const d = new Date(t*1000);
-  return MONTHS[d.getMonth()] + " " + d.getFullYear();
+  return (est ? "~" : "") + MONTHS[d.getMonth()] + " " + d.getFullYear();
 }
 function mmss(s){
   if(!s) return "";
@@ -860,7 +862,7 @@ function renderSongs(force){
       +  `<span class="alb" dir="auto"${al?` data-al="${s[2]}"`:''}>${al?esc(al[0]):''}</span>`
       +  `<span class="lk${isLiked(i)?' on':''}" data-lk="${esc(s[4])}">`
       +    (isLiked(i) ? ICON.likeOn : ICON.like) + `</span>`
-      +  (HAS_DATES ? `<span class="added">${added(s[6])}</span>` : "")
+      +  (HAS_DATES ? `<span class="added"${s[7]?' title="approximate — inferred from your liked-songs order"':''}>${added(s[6],s[7])}</span>` : "")
       +  `<span class="d">${mmss(s[3])}</span>`
       +  `<span class="yt">${ICON.rowPlay}</span>`
       +  `</div>`;
@@ -1635,7 +1637,7 @@ async function playUnliked(row){
   // Never liked, so likedAt is 0 and it files last under date order. The
   // credit list is [5]: this row used to carry two extra fields before them,
   // and pushing the old shape left [5] a number that recompute() choked on.
-  SONGS.push([tr[0], al[1], ai, tr[1], vid, [al[1]], 0]);
+  SONGS.push([tr[0], al[1], ai, tr[1], vid, [al[1]], 0, 0]);
   const si = SONGS.length - 1;
   S_KEY.push(fold(tr[0] + " " + artist + " " + al[0]));
   S_SORT.push(sortKey(tr[0]));

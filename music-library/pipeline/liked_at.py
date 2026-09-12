@@ -41,6 +41,13 @@ from to_d1 import q, user_id  # noqa: E402  -- one definition of the id scheme
 CSV_PATH = os.environ.get("MUSIC_CSV", os.path.join(DATA, "liked_music_deduped.csv"))
 OUT = os.environ.get("MUSIC_LIKED_AT", os.path.join(DATA, "liked_at.json"))
 
+# Login cookies, deliberately outside Google Drive. Same file the local server
+# uses; ytm_login.py writes it.
+_legacy = os.path.expanduser("~/AlonPersonal/musiclib")
+STATE = os.environ.get("MUSICLIB_HOME") or (
+    _legacy if os.path.isdir(_legacy) else os.path.expanduser("~/.musiclib"))
+AUTH = os.path.join(STATE, "browser.json")
+
 # Takeout writes 'Video ID' and 'Playlist Video Creation Timestamp'. Matched
 # loosely because the exact spelling has changed between export versions.
 VIDEO_RE = re.compile(r"video\s*_?\s*id", re.I)
@@ -82,6 +89,68 @@ def read_html(root, name):
             if hit:
                 return z.read(hit[0]).decode("utf-8", "replace")
     return None
+
+
+# ------------------------------------------------------------- YouTube Music
+
+def from_ytmusic(auth, limit, span_from, cache):
+    """Dates spaced along the liked-songs order, which is the only per-song
+    recency information YouTube Music will give up.
+
+    These are inferred, not observed, and are marked as such all the way to the
+    page. The order is real -- index 0 is the most recent like, and a new like
+    appears there -- so the library sorts correctly. The individual days are
+    not: they are spread evenly across the span, and a song shown as 2024 may
+    really be 2019. Nothing about the real intervals is recoverable, and an
+    even spread at least never claims a cluster that did not happen.
+
+    Interpolating between the few measured dates was tried and abandoned: 99%
+    of them fall inside one four-month window, because watch history only
+    reaches back ~34 months and an old like's 'first heard' is just whenever it
+    was last replayed. Anchors that clustered cannot calibrate years."""
+    if cache and os.path.exists(cache):
+        order = json.load(io.open(cache, encoding="utf-8"))["order"]
+        print(f"  {len(order)} liked songs (cached)", file=sys.stderr)
+    else:
+        try:
+            from ytmusicapi import YTMusic
+        except ImportError:
+            raise SystemExit(
+                "ytmusicapi is not installed for this interpreter -- use the venv:\n"
+                "  ~/AlonPersonal/musiclib/venv/bin/python liked_at.py ...")
+        if not os.path.exists(auth):
+            raise SystemExit(f"no YouTube Music session at {auth}\n"
+                             "Run ytm_login.py first.")
+        res = YTMusic(auth).get_liked_songs(limit=limit) or {}
+        tracks = res.get("tracks") or []
+        order = [t["videoId"] for t in tracks if t.get("videoId")]
+        print(f"  '{res.get('title')}': {len(order)} liked songs, newest first",
+              file=sys.stderr)
+        for t in tracks[:5]:
+            who = ", ".join(a["name"] for a in (t.get("artists") or []) if a.get("name"))
+            print(f"    {(t.get('title') or '?')[:40]:42} {who[:26]}", file=sys.stderr)
+        print("  ^ check that against the app before trusting the result",
+              file=sys.stderr)
+    if not order:
+        raise SystemExit("no liked songs returned")
+
+    end = datetime.datetime.now(datetime.timezone.utc)
+    start = datetime.datetime.fromisoformat(span_from).replace(
+        tzinfo=datetime.timezone.utc)
+    if start >= end:
+        raise SystemExit(f"--span-from {span_from} is not in the past")
+    step = (end - start) / max(len(order) - 1, 1)
+    print(f"  spreading {len(order)} songs over {start.date()} -> {end.date()} "
+          f"({step.total_seconds() / 3600:.1f}h apart)", file=sys.stderr)
+
+    # Index 0 is the newest like, so it takes the latest instant.
+    dates, seen = {}, set()
+    for i, vid in enumerate(order):
+        if vid in seen:            # the list repeats a few ids; the first
+            continue               # sighting is the more recent one
+        seen.add(vid)
+        dates[vid] = (end - step * i).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return "ytmusic-order", dates, True
 
 
 # --------------------------------------------------------------- watch history
@@ -128,7 +197,7 @@ def from_watch_history(root):
         print("  note: watch history is a rolling window, not a lifetime -- it "
               "dates\n        recent likes well and older ones not at all",
               file=sys.stderr)
-    return "watch-history", dates
+    return "watch-history", dates, False
 
 
 # ------------------------------------------------------------ playlist exports
@@ -216,7 +285,7 @@ def from_playlists(root, wanted, use_any):
                   f"({len(spread)} distinct values). That is a bulk playlist "
                   f"rewrite, not your like history -- do not import it",
                   file=sys.stderr)
-    return "takeout-playlists", dates
+    return "takeout-playlists", dates, False
 
 
 # ----------------------------------------------------------------------- shared
@@ -226,6 +295,18 @@ def earliest(video_ids, dates):
     that matters is the earliest, when the song first arrived."""
     vals = [dates[v] for v in (video_ids or "").split(";") if v and v in dates]
     return min(vals) if vals else None
+
+
+def default_span():
+    """Spread back to the oldest date actually observed, rather than a round
+    number: it is the one honest lower bound available, and inventing a wider
+    span would invent a library history that nothing attests to."""
+    if os.path.exists(OUT):
+        seen = (json.load(io.open(OUT, encoding="utf-8")).get("dates") or {}).values()
+        if seen:
+            return min(seen)[:10]
+    return (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=3 * 365)).strftime("%Y-%m-%d")
 
 
 def coverage(dates):
@@ -244,7 +325,17 @@ def coverage(dates):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("takeout", help="a Takeout directory or .zip")
+    ap.add_argument("takeout", nargs="?", help="a Takeout directory or .zip")
+    ap.add_argument("--from-ytmusic", action="store_true",
+                    help="space dates along the liked-songs order (inferred)")
+    ap.add_argument("--span-from", default=None,
+                    help="oldest date to spread back to (default: the oldest "
+                         "measured date already on file, else 3 years ago)")
+    ap.add_argument("--auth", default=AUTH, help=f"session file (default {AUTH})")
+    ap.add_argument("--limit", type=int, default=100_000,
+                    help="most liked songs to page through")
+    ap.add_argument("--cache", default=None,
+                    help="a saved liked order, instead of calling YouTube Music")
     ap.add_argument("--dates", choices=("watched", "playlists"), default="watched",
                     help="which record to take the timestamps from")
     ap.add_argument("--playlist", default=None,
@@ -256,14 +347,25 @@ def main():
     ap.add_argument("--user", default="alon", help="handle, for --sql")
     a = ap.parse_args()
 
-    src, dates = (from_playlists(a.takeout, a.playlist, a.any) if a.dates == "playlists"
-                  else from_watch_history(a.takeout))
+    if a.from_ytmusic == bool(a.takeout):
+        ap.error("give either a Takeout path or --from-ytmusic, not both")
+
+    if a.from_ytmusic:
+        src, dates, est = from_ytmusic(a.auth, a.limit, a.span_from or default_span(),
+                                       a.cache)
+    elif a.dates == "playlists":
+        src, dates, est = from_playlists(a.takeout, a.playlist, a.any)
+    else:
+        src, dates, est = from_watch_history(a.takeout)
     coverage(dates)
+    if est:
+        print("  these dates are INFERRED from position, not measured -- the "
+              "order is\n  real, the individual days are not", file=sys.stderr)
 
     if not a.sql:
         with io.open(OUT, "w", encoding="utf-8") as fh:
-            json.dump({"source": src, "generated": NOW, "dates": dates},
-                      fh, ensure_ascii=False, sort_keys=True)
+            json.dump({"source": src, "generated": NOW, "estimated": est,
+                       "dates": dates}, fh, ensure_ascii=False, sort_keys=True)
         print(f"wrote {OUT}  ({len(dates)} videos, from {src})", file=sys.stderr)
         return
 
@@ -281,7 +383,8 @@ def main():
             continue
         n_set += 1
         sys.stdout.write(
-            f"UPDATE items SET liked_at={q(ts)} WHERE id={q(f'i_{uid}_{n}')};\n")
+            f"UPDATE items SET liked_at={q(ts)}, liked_at_estimated={1 if est else 0} "
+            f"WHERE id={q(f'i_{uid}_{n}')};\n")
     print(f"  {n_set} UPDATE statements", file=sys.stderr)
 
 

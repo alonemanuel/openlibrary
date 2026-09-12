@@ -60,11 +60,13 @@ def pack_url(url):
 
 
 def load_dates(path):
-    """liked_at.py's output. Absent is normal -- the whole feature is optional,
-    and a library with no dates simply never offers a meaningful date order."""
+    """liked_at.py's output, plus whether its dates were measured or inferred
+    from the liked order. Absent is normal -- the feature is optional, and a
+    library with no dates simply never offers a meaningful date order."""
     if not os.path.exists(path):
-        return {}
-    return json.load(open(path, encoding="utf-8")).get("dates") or {}
+        return {}, False
+    st = json.load(open(path, encoding="utf-8"))
+    return (st.get("dates") or {}), bool(st.get("estimated"))
 
 
 def liked_epoch(video_ids, dates):
@@ -151,7 +153,7 @@ def secs(d):
 def main():
     rows = list(csv.DictReader(open(CSV, encoding="utf-8-sig")))
     cache = json.load(open(CACHE, encoding="utf-8"))
-    dates = load_dates(LIKED_AT)
+    dates, est = load_dates(LIKED_AT)
     ac = cache.get("artists", {})
     alc = cache.get("albums2", {}) or {}
     legacy = cache.get("albums", {})
@@ -326,8 +328,9 @@ def main():
                 alb_ckey.append(ckey)
             li = album_ix[k]
 
-        songs.append([title, ai, li, secs(dur), vid, ais,
-                      liked_epoch(vid, dates)])
+        at = liked_epoch(vid, dates)
+        songs.append([title, ai, li, secs(dur), vid, ais, at,
+                      1 if (at and est) else 0])
 
     alb_tracks = collections.Counter(s[2] for s in songs if s[2] >= 0)
     art_tracks = collections.Counter(a for s in songs for a in s[5])
@@ -423,7 +426,7 @@ def main():
     names = {0: "album", 1: "single", 2: "EP", 3: "compilation", 4: "unknown"}
     n_dated = sum(1 for s_ in songs if s_[6])
     print(f"songs   : {len(songs)}  ({n_clean} titles tidied, "
-          f"{n_dated} dated)")
+          f"{n_dated} {'inferred' if est else 'dated'})")
     print(f"credits : {n_split} split into multiple artists")
     print(f"artists : {len(artists)}  ({sum(1 for a in artists if a[1])} photos, "
           f"{sum(1 for a in artists if a[5])} with a stored Latin name, "

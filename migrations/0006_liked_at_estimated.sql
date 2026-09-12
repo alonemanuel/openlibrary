@@ -1,0 +1,13 @@
+-- Whether liked_at was measured or inferred.
+--
+-- Only the *order* of the liked songs can be retrieved from YouTube Music --
+-- no per-like timestamp exists -- so dates derived from that order are spaced
+-- along it rather than observed. They order the library correctly, which is
+-- the real information, but any individual day is a guess and the page marks
+-- them so ("~Mar 2024").
+--
+-- The alternative to marking is a column that silently mixes measured and
+-- invented values, which is how a guess gets quoted back later as fact.
+--
+-- NULL or 0 means measured; 1 means inferred from position.
+ALTER TABLE items ADD COLUMN liked_at_estimated INTEGER;
