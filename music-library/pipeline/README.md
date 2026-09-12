@@ -22,6 +22,7 @@ This folder is only the offline build pipeline; the deployed site lives in
 | `match.py` | Pairs liked songs to official tracks (exact → feature-stripped → fuzzy). |
 | `clean.py` | Title tidying + Hebrew/Latin name splitting. Run it directly to see its test cases. |
 | `liked_at.py` | Recovers when each song was added, from a Google Takeout. Writes `../liked_at.json`. Optional. |
+| `ytm_login.py` | Saves a YouTube Music session from a copied DevTools request. Recent Chrome dropped "Copy request headers", so this takes Copy as cURL instead. |
 | `build.py` | Merges CSV + cache into `../library.html`. |
 | `../worker/public/index.html` | The page — single source of truth. `build.py` injects data where `/*__DATA__*/null` appears; the Cloudflare Worker injects a signed-in user's library at request time. The file on disk must keep the placeholder intact (CI enforces this on deploy). |
 | `../art_cache.json` | Cached artwork URLs. Only URLs are stored — no images are downloaded. |
