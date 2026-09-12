@@ -11,6 +11,7 @@ web/src/**/*.js
 # music-library: generated output and personal listening data
 music-library/art_cache.json
 music-library/resolved.json
+music-library/liked_at.json
 music-library/likes.json
 music-library/browser.json
 music-library/*.log
