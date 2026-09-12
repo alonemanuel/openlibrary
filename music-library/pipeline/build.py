@@ -33,6 +33,10 @@ DZ_RE = re.compile(r"https://(?:e-)?cdn-images\.dzcdn\.net/images/([a-z]+)/([0-9
 KINDS = ["cover", "artist", "misc", "playlist", "user", "talk"]
 # 0 album · 1 single · 2 ep · 3 compilation · 4 unknown
 RTYPE = {"album": 0, "single": 1, "ep": 2, "compile": 3, "compilation": 3}
+# A deduped row lists every upload of the song it merged. Keep a few as
+# fallbacks for when the first has been taken down; one row names 63, and
+# trying them all would stall the player for a minute before giving up.
+MAX_ALTS = 4
 
 
 # Serve mirrored art from our own bucket when MUSIC_CDN is set, so the page
@@ -283,7 +287,11 @@ def main():
         raw_ar = norm(r.get("artist"))
         al = norm(r.get("album"))
         dur = norm(r.get("duration"))
-        vid = norm(r.get("videoIds"))
+        # The CSV joins the merged uploads with ';'. Everything downstream --
+        # the player, the like button, the row's identity -- wants one id, and
+        # handing it the whole list is what made these rows unplayable.
+        vids = [x for x in norm(r.get("videoIds")).split(";") if x]
+        vid = vids[0] if vids else ""
 
         ais = []
         for member in (credit_members.get(raw_ar) or []):
@@ -328,9 +336,9 @@ def main():
                 alb_ckey.append(ckey)
             li = album_ix[k]
 
-        at = liked_epoch(vid, dates)
+        at = liked_epoch(";".join(vids), dates)
         songs.append([title, ai, li, secs(dur), vid, ais, at,
-                      1 if (at and est) else 0])
+                      1 if (at and est) else 0, vids[1:1 + MAX_ALTS]])
 
     alb_tracks = collections.Counter(s[2] for s in songs if s[2] >= 0)
     art_tracks = collections.Counter(a for s in songs for a in s[5])
@@ -424,6 +432,8 @@ def main():
 
     tc = collections.Counter(a[5] for a in albums)
     names = {0: "album", 1: "single", 2: "EP", 3: "compilation", 4: "unknown"}
+    n_alt = sum(1 for s_ in songs if s_[8])
+    print(f"videos  : {n_alt} songs kept alternate uploads as fallbacks")
     n_dated = sum(1 for s_ in songs if s_[6])
     print(f"songs   : {len(songs)}  ({n_clean} titles tidied, "
           f"{n_dated} {'inferred' if est else 'dated'})")

@@ -643,12 +643,15 @@ let DATA = /*__DATA__*/null;
 const SONGS = DATA.songs, ARTISTS = DATA.artists, ALBUMS = DATA.albums, KINDS = DATA.kinds;
 const ORIGINAL_SONGS = SONGS.length;   // rows appended later were never in the export
 // song tuple: [0]title [1]leadArtistIdx [2]albumIdx [3]seconds [4]videoId
-//              [5]allArtistIdxs [6]likedAt [7]estimated
+//              [5]allArtistIdxs [6]likedAt [7]estimated [8]altIds
 //   [6] is epoch seconds of when the song was added, 0 when unknown. Google
 //   keeps no per-like timestamp, so most of these are inferred by spacing the
 //   library along YouTube Music's liked order — real ordering, guessed days.
 //   [7] marks those, and they print with a ~ so a guess is never read back as
 //   a measurement.
+//   [8] is the other uploads this row merged — the same song, different
+//   videos. [4] is the one that plays; these are tried in turn when YouTube
+//   refuses it, before the song is given up on.
 //   [5] is every act named in the credit — 'Vibe Ish, Roisha' is two artists,
 //   each independently clickable. [1] is just [5][0], kept for album filing.
 // artist    : [0]displayName [1]pic [2]picSm [3]nTracks [4]nAlbums [5]latinName [6]slug
@@ -1444,6 +1447,7 @@ const ytUrl = v => "https://www.youtube.com/watch?v=" + encodeURIComponent(v);
 // catches it. Decide up front instead.
 const IS_FILE = location.protocol === "file:";
 let mode = IS_FILE ? "embed" : "api", YTP = null, ytReady = false, pending = null;
+let curAlt = 0;            // which upload of the current song is playing
 let apiErrors = 0;
 let queue = [], qpos = -1, curSong = -1, seeking = false, tick = null;
 let sheetQueue = null, pipShownOnce = false;
@@ -1498,6 +1502,7 @@ window.onYouTubeIframeAPIReady = function(){
           if(curSong >= 0) load(curSong);
           return;
         }
+        if(nextUpload()) return;
         note(e.data === 100 ? "Video unavailable — skipping"
                             : "Uploader blocked embedding — skipping");
         setTimeout(next, 1500);
@@ -1556,6 +1561,9 @@ window.addEventListener("message", ev => {
 // If even the plain embed is refused, stop guessing and say what to do.
 let toldAboutLauncher = false;
 function embedFailed(){
+  // Same courtesy as the API path: a merged row's other uploads get a turn
+  // before the song is declared unplayable.
+  if(nextUpload()) return;
   stopTick(); fbPlaying = false; paintPlayState(false);
   if(IS_FILE && !toldAboutLauncher){
     toldAboutLauncher = true;
@@ -1597,8 +1605,34 @@ function markPlaying(){
   });
 }
 
+/* A deduped row merged several uploads of one song. [4] plays; [8] are the
+   rest, tried in turn when YouTube refuses one — a taken-down upload should
+   cost the song a second, not silence it. */
+function idsOf(si){ return [SONGS[si][4]].concat(SONGS[si][8] || []).filter(Boolean); }
+
+function playId(vid){
+  if(mode === "api"){
+    if(!ytReady){ pending = curSong; markPlaying(); return; }
+    YTP.loadVideoById(vid);
+  } else {
+    fbLoad(vid);
+  }
+}
+
+/* Returns false when every upload has been tried, so the caller skips on. */
+function nextUpload(){
+  if(curSong < 0) return false;
+  const ids = idsOf(curSong);
+  if(curAlt + 1 >= ids.length) return false;
+  curAlt++;
+  note("Trying another upload…");
+  playId(ids[curAlt]);
+  return true;
+}
+
 function load(si){
   curSong = si;
+  curAlt = 0;
   const s = SONGS[si];
   const ar = s[1] >= 0 ? ARTISTS[s[1]] : null;
   const al = s[2] >= 0 ? ALBUMS[s[2]] : null;
@@ -1622,12 +1656,7 @@ function load(si){
 
   paintHeart();
 
-  if(mode === "api"){
-    if(!ytReady){ pending = si; markPlaying(); return; }
-    YTP.loadVideoById(s[4]);
-  } else {
-    fbLoad(s[4]);
-  }
+  playId(s[4]);
   markPlaying();
 }
 
@@ -1653,7 +1682,7 @@ async function playUnliked(row){
   // Never liked, so likedAt is 0 and it files last under date order. The
   // credit list is [5]: this row used to carry two extra fields before them,
   // and pushing the old shape left [5] a number that recompute() choked on.
-  SONGS.push([tr[0], al[1], ai, tr[1], vid, [al[1]], 0, 0]);
+  SONGS.push([tr[0], al[1], ai, tr[1], vid, [al[1]], 0, 0, []]);
   const si = SONGS.length - 1;
   S_KEY.push(fold(tr[0] + " " + artist + " " + al[0]));
   S_SORT.push(sortKey(tr[0]));
